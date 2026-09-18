@@ -33,6 +33,7 @@ class RepositoryRead(RepositoryBase):
     id: int
     status: RepoStatus
     error_message: Optional[str] = None
+    clone_path: Optional[str] = None
     commit_count: int
     created_at: datetime
     updated_at: datetime

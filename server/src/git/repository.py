@@ -1,10 +1,10 @@
 import re
 import shutil
-import subprocess
 from pathlib import Path
-from typing import List, Optional
 from urllib.parse import urlparse
 from src.core.config import config
+from src.git.git_runner import run_git
+from enum import Enum
 
 def _sanitize_dirname(name: str) -> str:
     name = "".join(c if (c.isalnum() or c in "-_.") else "-" for c in name)
@@ -19,25 +19,6 @@ class GitRepository:
         self.source = source
         if not (self.repo_path / ".git").is_dir():
             raise ValueError(f"{self.repo_path} does not appear to be a Git repository")
-
-    @staticmethod
-    def _run_git(args: List[str], cwd: Optional[Path] = None, timeout: int = 120) -> subprocess.CompletedProcess:
-        cmd = ["git", *args]
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise TimeoutError(f"Git command timed out after {timeout}s: {' '.join(cmd)}")
-        if result.returncode != 0:
-            raise RuntimeError(f"Git command failed: {' '.join(cmd)}\n{result.stderr.strip()}")
-        return result
 
     @classmethod
     def _is_github(cls, parsed) -> bool:
@@ -84,7 +65,7 @@ class GitRepository:
         name, source = cls._derive_name_and_source(url)
         target = cls._unique_target(root, name)
         try:
-            cls._run_git(["clone", url, str(target)], cwd=None, timeout=timeout)
+            run_git(["clone", url, str(target)], cwd=None, timeout=timeout)
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
             raise
@@ -94,8 +75,7 @@ class GitRepository:
         return str(self.repo_path)
 
     def get_default_branch(self) -> str:
-        result = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=self.repo_path)
-        return result.stdout.strip()
+        return run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=self.repo_path).strip()
 
     def __repr__(self) -> str:
         return f"<GitRepository path={self.repo_path} source={self.source}>"

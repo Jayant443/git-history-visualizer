@@ -3,6 +3,12 @@ from src.core.config import config
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
+from src.models.author import Author
+from src.models.branch import Branch
+from src.models.repository import Repository
+from src.models.commit import Commit, CommitParentLink
+from src.models.file_change import FileChange
+from src.models.tag import Tag
 
 engine = create_async_engine(url=config.DATABASE_URL, echo=True, future=True)
 

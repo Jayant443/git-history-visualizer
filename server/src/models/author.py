@@ -1,6 +1,8 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship, UniqueConstraint
-from src.models.commit import Commit
+
+if TYPE_CHECKING:
+    from src.models.commit import Commit
 
 class AuthorBase(SQLModel):
     name: str

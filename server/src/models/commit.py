@@ -16,6 +16,7 @@ class CommitParentLink(SQLModel, table=True):
 
 class CommitBase(SQLModel):
     sha: str
+    short_sha: str = Field(index=True)
     message: str
     summary: str
     authored_at: datetime
