@@ -1,9 +1,11 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship, UniqueConstraint
 from src.models.author import Author, AuthorRead
-from src.models.repository import Repository
-from src.models.file_change import FileChange
+
+if TYPE_CHECKING:
+    from src.models.repository import Repository
+    from src.models.file_change import FileChange
 
 class CommitParentLink(SQLModel, table=True):
     __tablename__ = "commit_parent_links"
@@ -29,7 +31,7 @@ class Commit(CommitBase, table=True):
     author_id: Optional[int] = Field(default=None, foreign_key="authors.id")
     committer_id: Optional[int] = Field(default=None, foreign_key="authors.id")
     sequence_index: int = Field(index=True)
-    repository: Repository = Relationship(back_populates="commits")
+    repository: "Repository" = Relationship(back_populates="commits")
     author: Optional[Author] = Relationship(back_populates="commits_authored", sa_relationship_kwargs={"foreign_keys": "Commit.author_id"})
     committer: Optional[Author] = Relationship(back_populates="commits_committed", sa_relationship_kwargs={"foreign_keys": "Commit.committer_id"},)
     file_changes: list["FileChange"] = Relationship(back_populates="commit")

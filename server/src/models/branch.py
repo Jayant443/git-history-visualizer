@@ -1,7 +1,9 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship, UniqueConstraint
 from src.models.commit import Commit
-from src.models.repository import Repository
+
+if TYPE_CHECKING:
+    from src.models.repository import Repository
 
 class BranchBase(SQLModel):
     name: str
@@ -14,7 +16,7 @@ class Branch(BranchBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     repository_id: int = Field(foreign_key="repositories.id", index=True)
     head_commit_id: Optional[int] = Field(default=None, foreign_key="commits.id")
-    repository: Repository = Relationship(back_populates="branches")
+    repository: "Repository" = Relationship(back_populates="branches")
     head_commit: Optional[Commit] = Relationship()
 
 class BranchRead(BranchBase):
