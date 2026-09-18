@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.core.database import init_db
+from src.api.repositories import repo_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/")
+app.include_router(repo_router, prefix=f"/repositories", tags = ["repositories"])
+
+@app.get("/")
 async def root():
     return {"message": "running"}
