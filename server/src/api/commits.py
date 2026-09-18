@@ -2,7 +2,7 @@ import asyncio
 from typing import List
 from fastapi import APIRouter, HTTPException
 from src.git.commits import parse_git_commits
-from src.models.commit import Commit
+from src.schemas.commit import Commit
 
 commit_router = APIRouter()
 

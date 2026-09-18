@@ -2,7 +2,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
-from src.models.commit import Commit
+from src.schemas.commit import Commit
 
 def _to_datetime(ts: int) -> datetime:
     return datetime.fromtimestamp(ts, tz=timezone.utc)
