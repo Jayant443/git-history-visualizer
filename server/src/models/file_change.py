@@ -7,6 +7,8 @@ class FileChangeBase(SQLModel):
     file_path: str
     old_path: Optional[str] = None
     change_type: ChangeType
+    old_blob_sha: Optional[str] = None
+    new_blob_sha: Optional[str] = None
     additions: int = Field(default=0)
     deletions: int = Field(default=0)
     is_binary: bool = Field(default=False)

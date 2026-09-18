@@ -1,8 +1,12 @@
+import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
+from src.git.files import read_all_files_at_commit, read_blob_content, read_tree
 from src.models.commit import CommitRead
+from src.models.repository import Repository
+from src.schemas.files import BlobContent, FileContent, TreeEntry
 from src.services.commit_service import (
     get_all_commits,
     get_commit_by_short_sha,
@@ -17,7 +21,15 @@ async def _require_repository(session: AsyncSession, repository_id: int) -> None
     if await get_repository(session, repository_id) is None:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-@commit_router.get("/{repository_id:int}/commits", response_model=List[CommitRead], name="list-commits")
+async def _require_clone(session: AsyncSession, repository_id: int) -> Repository:
+    repo = await get_repository(session, repository_id)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    if not repo.clone_path:
+        raise HTTPException(status_code=422, detail="Repository has no local clone")
+    return repo
+
+@commit_router.get("/{repository_id:int}/commits", response_model=List[CommitRead])
 async def fetch_commits(repository_id: int, limit: int = Query(default=100, le=500), offset: int = Query(default=0, ge=0), session: AsyncSession = Depends(get_session),):
     await _require_repository(session, repository_id)
     try:
@@ -26,13 +38,13 @@ async def fetch_commits(repository_id: int, limit: int = Query(default=100, le=5
         raise HTTPException(status_code=400, detail=str(e))
     return [to_commit_read(commit) for commit in rows]
 
-@commit_router.get("/{repository_id:int}/commits/all", response_model=List[CommitRead], name="list-all-commits",)
+@commit_router.get("/{repository_id:int}/commits/all", response_model=List[CommitRead])
 async def fetch_all_commits(repository_id: int, session: AsyncSession = Depends(get_session)):
     await _require_repository(session, repository_id)
     rows = await get_all_commits(session, repository_id)
     return [to_commit_read(commit) for commit in rows]
 
-@commit_router.get("/{repository_id:int}/commits/next", response_model=List[CommitRead], name="list-next-commits",)
+@commit_router.get("/{repository_id:int}/commits/next", response_model=List[CommitRead])
 async def fetch_next_commits(repository_id: int, skip: int = Query(default=0, ge=0), limit: int = Query(default=10, ge=1, le=500), session: AsyncSession = Depends(get_session),):
     await _require_repository(session, repository_id)
     try:
@@ -41,7 +53,7 @@ async def fetch_next_commits(repository_id: int, skip: int = Query(default=0, ge
         raise HTTPException(status_code=400, detail=str(e))
     return [to_commit_read(commit) for commit in rows]
 
-@commit_router.get("/{repository_id:int}/commits/{short_sha}", response_model=CommitRead, name="get-commit-by-short-sha",)
+@commit_router.get("/{repository_id:int}/commits/{short_sha}", response_model=CommitRead)
 async def fetch_commit_by_short_sha(repository_id: int, short_sha: str, session: AsyncSession = Depends(get_session)):
     await _require_repository(session, repository_id)
     try:
@@ -51,3 +63,39 @@ async def fetch_commit_by_short_sha(repository_id: int, short_sha: str, session:
     if commit is None:
         raise HTTPException(status_code=404, detail="Commit not found")
     return to_commit_read(commit)
+
+@commit_router.get("/{repository_id:int}/commits/{sha}/tree", response_model=List[TreeEntry])
+async def fetch_commit_tree(repository_id: int, sha: str, session: AsyncSession = Depends(get_session)):
+    repo = await _require_clone(session, repository_id)
+    try:
+        return await asyncio.to_thread(read_tree, repo.clone_path, sha)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+@commit_router.get("/{repository_id:int}/commits/{sha}/files", response_model=List[FileContent])
+async def fetch_commit_files(repository_id: int, sha: str, session: AsyncSession = Depends(get_session)):
+    repo = await _require_clone(session, repository_id)
+    try:
+        return await asyncio.to_thread(read_all_files_at_commit, repo.clone_path, sha)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+@commit_router.get("/{repository_id:int}/blobs/{blob_sha}", response_model=BlobContent)
+async def fetch_blob_content(repository_id: int, blob_sha: str, session: AsyncSession = Depends(get_session)):
+    repo = await _require_clone(session, repository_id)
+    try:
+        return await asyncio.to_thread(read_blob_content, repo.clone_path, blob_sha)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
