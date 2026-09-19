@@ -75,11 +75,6 @@ def _parse_line(line: str) -> Optional[Commit]:
     )
 
 def parse_git_commits(repo_path: str, max_count: Optional[int] = 100, skip: int = 0) -> List[Commit]:
-    """Commits in replay order (oldest first); `skip`/`max_count` page from there.
-
-    `git log --reverse` cannot page oldest-first (`-n`/`--skip` apply before
-    reversing), so the full log is fetched and sliced here instead.
-    """
     repo = _ensure_repo(repo_path)
     if max_count is not None and max_count < 1:
         raise ValueError("max_count must be positive")
@@ -91,7 +86,8 @@ def parse_git_commits(repo_path: str, max_count: Optional[int] = 100, skip: int 
         commit = _parse_line(line)
         if commit is not None:
             commits.append(commit)
-    commits.reverse()  # git log is newest-first; replay starts at the first commit
+    commits.reverse()
+    commits.sort(key=lambda c: (c.commit_timestamp, c.author_timestamp, c.sha))
     if skip:
         commits = commits[skip:]
     if max_count is not None:
