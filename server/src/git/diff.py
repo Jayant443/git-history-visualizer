@@ -8,13 +8,11 @@ _NULL_PROBE_BYTES = 8000
 # Cap per-file payload so a huge generated file can't blow up the JSON response.
 _MAX_CONTENT_BYTES = 1_000_000
 
-
 def _ensure_repo(repo_path: str) -> Path:
     repo = Path(repo_path).resolve()
     if not (repo / ".git").is_dir():
         raise ValueError(f"{repo} is not a Git repository")
     return repo
-
 
 def _validate_sha(sha: str) -> str:
     sha = sha.strip()
@@ -22,16 +20,13 @@ def _validate_sha(sha: str) -> str:
         raise ValueError(f"{sha!r} is not a valid commit SHA")
     return sha
 
-
 def _object_type(repo: Path, sha: str) -> str | None:
     try:
         return run_git(["cat-file", "-t", sha], cwd=repo).strip()
     except RuntimeError:
         return None
 
-
 def _first_parent(repo: Path, sha: str) -> str | None:
-    """Return the first parent SHA, or None for the initial (root) commit."""
     try:
         output = run_git(["rev-list", "--parents", "-n", "1", sha], cwd=repo).strip()
     except RuntimeError as exc:
@@ -41,13 +36,7 @@ def _first_parent(repo: Path, sha: str) -> str | None:
         raise LookupError(f"No commit {sha!r}")
     return parts[1] if len(parts) > 1 else None
 
-
 def _show_file(repo: Path, rev: str, path: str) -> tuple[str, bool]:
-    """Return (text, is_binary) for `rev:path`; missing files yield ("", False).
-
-    Uses `git show {rev}:{path}` (equivalent to `git -C <repo> show ...`).
-    Never raises for add/delete cases — only unexpected git failures propagate.
-    """
     try:
         data = run_git_bytes(["show", f"{rev}:{path}"], cwd=repo)
     except RuntimeError:
@@ -59,19 +48,7 @@ def _show_file(repo: Path, rev: str, path: str) -> tuple[str, bool]:
         return "", True
     return data.decode("utf-8", errors="replace"), False
 
-
 def read_commit_diff(repo_path: str, sha: str) -> CommitDiff:
-    """True per-file diff of a commit against its first parent.
-
-    - `git diff-tree --numstat -r --no-commit-id --root {sha}` gives true
-      additions/deletions per path (binary rows show `- -`).
-    - `git show {parent}:{path}` / `git show {sha}:{path}` give the real
-      original (parent) and modified (target) contents.
-    - Initial commits (no parent) diff against the empty tree via `--root`,
-      so `original` is `""` for every file.
-    - Binary or missing sides degrade to `""` + `binary=True` / `0` counts
-      instead of raising.
-    """
     repo = _ensure_repo(repo_path)
     sha = _validate_sha(sha)
     obj_type = _object_type(repo, sha)
