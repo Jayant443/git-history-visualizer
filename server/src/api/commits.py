@@ -5,14 +5,14 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
 from src.git.files import read_all_files_at_commit, read_blob_content, read_tree
 from src.git.diff import read_commit_diff
-from src.models.commit import CommitRead
 from src.models.repository import Repository
+from src.schemas.branches import CommitWithBranches
 from src.schemas.files import BlobContent, CommitDiff, FileContent, TreeEntry
 from src.services.commit_service import (
     get_all_commits,
     get_commit_by_short_sha,
     list_commits,
-    to_commit_read,
+    to_commit_with_branches_list,
 )
 from src.services.repository_service import get_repository
 
@@ -30,31 +30,31 @@ async def _require_clone(session: AsyncSession, repository_id: int) -> Repositor
         raise HTTPException(status_code=422, detail="Repository has no local clone")
     return repo
 
-@commit_router.get("/{repository_id:int}/commits", response_model=List[CommitRead])
+@commit_router.get("/{repository_id:int}/commits", response_model=List[CommitWithBranches])
 async def fetch_commits(repository_id: int, limit: int = Query(default=100, le=500), offset: int = Query(default=0, ge=0), session: AsyncSession = Depends(get_session),):
     await _require_repository(session, repository_id)
     try:
         rows = await list_commits(session, repository_id, limit=limit, offset=offset)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return [to_commit_read(commit) for commit in rows]
+    return await to_commit_with_branches_list(session, rows)
 
-@commit_router.get("/{repository_id:int}/commits/all", response_model=List[CommitRead])
+@commit_router.get("/{repository_id:int}/commits/all", response_model=List[CommitWithBranches])
 async def fetch_all_commits(repository_id: int, session: AsyncSession = Depends(get_session)):
     await _require_repository(session, repository_id)
     rows = await get_all_commits(session, repository_id)
-    return [to_commit_read(commit) for commit in rows]
+    return await to_commit_with_branches_list(session, rows)
 
-@commit_router.get("/{repository_id:int}/commits/next", response_model=List[CommitRead])
+@commit_router.get("/{repository_id:int}/commits/next", response_model=List[CommitWithBranches])
 async def fetch_next_commits(repository_id: int, skip: int = Query(default=0, ge=0), limit: int = Query(default=10, ge=1, le=500), session: AsyncSession = Depends(get_session),):
     await _require_repository(session, repository_id)
     try:
         rows = await list_commits(session, repository_id, limit=limit, offset=skip)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return [to_commit_read(commit) for commit in rows]
+    return await to_commit_with_branches_list(session, rows)
 
-@commit_router.get("/{repository_id:int}/commits/{short_sha}", response_model=CommitRead)
+@commit_router.get("/{repository_id:int}/commits/{short_sha}", response_model=CommitWithBranches)
 async def fetch_commit_by_short_sha(repository_id: int, short_sha: str, session: AsyncSession = Depends(get_session)):
     await _require_repository(session, repository_id)
     try:
@@ -63,7 +63,7 @@ async def fetch_commit_by_short_sha(repository_id: int, short_sha: str, session:
         raise HTTPException(status_code=400, detail=str(e))
     if commit is None:
         raise HTTPException(status_code=404, detail="Commit not found")
-    return to_commit_read(commit)
+    return (await to_commit_with_branches_list(session, [commit]))[0]
 
 @commit_router.get("/{repository_id:int}/commits/{sha}/tree", response_model=List[TreeEntry])
 async def fetch_commit_tree(repository_id: int, sha: str, session: AsyncSession = Depends(get_session)):

@@ -80,7 +80,7 @@ def parse_git_commits(repo_path: str, max_count: Optional[int] = 100, skip: int 
         raise ValueError("max_count must be positive")
     if skip < 0:
         raise ValueError("skip must not be negative")
-    output = run_git(["log", f"--pretty=format:{_FORMAT}"], cwd=repo)
+    output = run_git(["log", "--all", f"--pretty=format:{_FORMAT}"], cwd=repo)
     commits: List[Commit] = []
     for line in output.splitlines():
         commit = _parse_line(line)

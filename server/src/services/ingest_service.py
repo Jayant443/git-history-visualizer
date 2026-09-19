@@ -2,9 +2,11 @@ import asyncio
 from pathlib import Path
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.git.commits import parse_git_commits
+from src.git.refs import list_branches, list_tags
 from src.git.repository import GitRepository
 from src.models.enums import RepoStatus
 from src.models.repository import Repository
+from src.services.branch_service import persist_branches, persist_tags
 from src.services.commit_service import clear_commits, persist_commits
 from src.services.repository_service import (
     get_repository_by_url,
@@ -36,6 +38,10 @@ async def ingest_repository(session: AsyncSession, url: str) -> Repository:
         records = await asyncio.to_thread(parse_git_commits, cloned.get_path(), None)
         await clear_commits(session, repository)
         await persist_commits(session, repository, records)
+        branches = await asyncio.to_thread(list_branches, cloned.get_path())
+        await persist_branches(session, repository, branches)
+        tags = await asyncio.to_thread(list_tags, cloned.get_path())
+        await persist_tags(session, repository, tags)
         await mark_repository_status(session, repository, RepoStatus.ready)
     except Exception as exc:
         await mark_repository_status(session, repository, RepoStatus.error, str(exc))

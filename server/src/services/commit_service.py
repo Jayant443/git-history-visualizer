@@ -6,8 +6,11 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import delete, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.models.author import Author, AuthorRead
+from src.models.branch import Branch
 from src.models.commit import Commit, CommitParentLink, CommitRead
 from src.models.repository import Repository
+from src.models.tag import Tag
+from src.schemas.branches import CommitWithBranches
 from src.schemas.commit import Commit as ParsedCommit
 
 _SHA_RE = re.compile(r"[0-9a-fA-F]+")
@@ -83,6 +86,8 @@ def _sort_key_for_record(record: ParsedCommit) -> Tuple[datetime, datetime, str]
 async def clear_commits(session: AsyncSession, repository: Repository) -> int:
     if repository.id is None:
         return 0
+    await session.exec(delete(Tag).where(Tag.repository_id == repository.id))
+    await session.exec(delete(Branch).where(Branch.repository_id == repository.id))
     existing = list((await session.exec(select(Commit).where(Commit.repository_id == repository.id))).all())
     if not existing:
         return 0
@@ -290,3 +295,58 @@ def to_commit_read(commit: Commit) -> CommitRead:
         ),
         parent_shas=[parent.sha for parent in commit.parents],
     )
+
+def _propagate_branch_labels(heads: Dict[int, List[str]], parents_of: Dict[int, List[int]]) -> Dict[int, List[str]]:
+    membership: Dict[int, Set[str]] = {}
+    for head_id, names in heads.items():
+        if not names:
+            continue
+        stack = [head_id]
+        visited: Set[int] = set()
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            membership.setdefault(current, set()).update(names)
+            stack.extend(parent for parent in parents_of.get(current, []) if parent not in visited)
+    return {commit_id: sorted(names) for commit_id, names in membership.items()}
+
+async def branch_membership(session: AsyncSession, repository_id: int) -> Dict[int, List[str]]:
+    branch_result = await session.exec(select(Branch).where(Branch.repository_id == repository_id))
+    heads: Dict[int, List[str]] = {}
+    for branch in branch_result.all():
+        if branch.head_commit_id is None:
+            continue
+        heads.setdefault(branch.head_commit_id, []).append(branch.name)
+    if not heads:
+        return {}
+    id_result = await session.exec(select(Commit.id).where(Commit.repository_id == repository_id))
+    commit_ids = [commit_id for commit_id in id_result.all() if commit_id is not None]
+    if not commit_ids:
+        return {}
+    link_result = await session.exec(
+        select(CommitParentLink).where(CommitParentLink.child_id.in_(commit_ids))
+    )
+    parents_of: Dict[int, List[int]] = {}
+    for link in link_result.all():
+        parents_of.setdefault(link.child_id, []).append(link.parent_id)
+    return _propagate_branch_labels(heads, parents_of)
+
+def to_commit_with_branches(commit: Commit, branches: Optional[List[str]] = None) -> CommitWithBranches:
+    base = to_commit_read(commit)
+    return CommitWithBranches(**base.model_dump(), branches=list(branches or []))
+
+async def to_commit_with_branches_list(session: AsyncSession, commits: List[Commit]) -> List[CommitWithBranches]:
+    if not commits:
+        return []
+    membership_by_repo: Dict[int, Dict[int, List[str]]] = {}
+    for repo_id in {commit.repository_id for commit in commits}:
+        membership_by_repo[repo_id] = await branch_membership(session, repo_id)
+    enriched: List[CommitWithBranches] = []
+    for commit in commits:
+        branches: List[str] = []
+        if commit.id is not None:
+            branches = membership_by_repo.get(commit.repository_id, {}).get(commit.id, [])
+        enriched.append(to_commit_with_branches(commit, branches))
+    return enriched
