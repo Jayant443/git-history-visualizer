@@ -20,6 +20,7 @@
  * File contents at a given commit:
  * - GET /repositories/{id}/commits/{sha}/tree  -> TreeEntry[]
  * - GET /repositories/{id}/commits/{sha}/files -> FileContent[]
+ * - GET /repositories/{id}/commits/{sha}/diff  -> CommitDiff
  * - GET /repositories/{id}/blobs/{blob_sha}    -> BlobContent
  */
 
@@ -86,6 +87,23 @@ export interface BlobContent {
   size: number;
   binary: boolean;
   content: string | null;
+}
+
+/** Mirrors `server/src/schemas/files.py::DiffFile`. */
+export interface DiffFile {
+  path: string;
+  original: string;
+  modified: string;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+/** Mirrors `server/src/schemas/files.py::CommitDiff`. */
+export interface CommitDiff {
+  sha: string;
+  parent_sha: string | null;
+  files: DiffFile[];
 }
 
 export interface CloneRepoRequest {
@@ -194,6 +212,12 @@ export const api = {
   getCommitFiles: (repositoryId: number, sha: string): Promise<FileContent[]> =>
     request<FileContent[]>(
       `/repositories/${repositoryId}/commits/${encodeURIComponent(sha)}/files`,
+    ),
+
+  /** GET /repositories/{id}/commits/{sha}/diff — true parent→target diff. */
+  getCommitDiff: (repositoryId: number, sha: string): Promise<CommitDiff> =>
+    request<CommitDiff>(
+      `/repositories/${repositoryId}/commits/${encodeURIComponent(sha)}/diff`,
     ),
 
   /** GET /repositories/{id}/blobs/{blob_sha} — single blob content. */
