@@ -68,6 +68,8 @@ function handleForAuthor(name: string, email: string): string {
 function adaptCommit(commit: CommitRead, defaultBranch: string): MockCommit {
   const name = commit.author?.name ?? commit.committer?.name ?? "Unknown";
   const email = commit.author?.email ?? commit.committer?.email ?? "unknown";
+  const fallback = defaultBranch || "main";
+  const branches = commit.branches.length > 0 ? commit.branches : [fallback];
   return {
     id: commit.sha,
     short: commit.short_sha,
@@ -78,7 +80,8 @@ function adaptCommit(commit: CommitRead, defaultBranch: string): MockCommit {
       color: authorColor(email),
     },
     date: commit.committed_at,
-    branch: defaultBranch || "main",
+    branch: branches[0],
+    branches,
     parents: commit.parent_shas,
     isMerge: commit.is_merge,
     files: [],
@@ -229,13 +232,18 @@ export default function App() {
   }, [backendCommits, defaultBranch, isLive]);
 
   const availableBranches = useMemo(() => {
-    const set = new Set(commits.map((c) => c.branch));
+    const set = new Set<string>();
+    for (const c of commits) {
+      for (const b of c.branches ?? [c.branch]) set.add(b);
+    }
     return [...set].sort();
   }, [commits]);
 
   const filteredCommits = useMemo(
     () =>
-      branch === "all" ? commits : commits.filter((c) => c.branch === branch),
+      branch === "all"
+        ? commits
+        : commits.filter((c) => (c.branches ?? [c.branch]).includes(branch)),
     [branch, commits],
   );
 

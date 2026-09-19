@@ -24,6 +24,7 @@ export interface MockCommit {
   author: MockAuthor;
   date: string;
   branch: string;
+  branches?: string[];
   parents: string[];
   isMerge?: boolean;
   files: FileChange[];

@@ -14,10 +14,28 @@ const ROW_H = 76;
 const LANE_W = 120;
 const NODE_R = 9;
 
-function laneOf(branch: string): number {
-  if (branch === "main") return 0;
-  if (branch === "feature/auth") return 1;
-  return 2;
+function laneOf(branch: string, lanes: string[]): number {
+  const index = lanes.indexOf(branch);
+  return index === -1 ? 0 : index;
+}
+
+const FALLBACK_BRANCH_COLORS = [
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+  "#f59e0b",
+  "#ec4899",
+  "#14b8a6",
+];
+
+function branchColor(branch: string): string {
+  const known = BRANCH_COLORS[branch];
+  if (known) return known;
+  let hash = 0;
+  for (let i = 0; i < branch.length; i++) {
+    hash = (hash * 31 + branch.charCodeAt(i)) >>> 0;
+  }
+  return FALLBACK_BRANCH_COLORS[hash % FALLBACK_BRANCH_COLORS.length];
 }
 
 function formatDateTime(iso: string): string {
@@ -91,7 +109,15 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
     [ordered],
   );
 
-  const width = LANE_W * 3 + 40;
+  const lanes = useMemo(() => {
+    const names: string[] = [];
+    for (const c of commits) {
+      if (!names.includes(c.branch)) names.push(c.branch);
+    }
+    return names;
+  }, [commits]);
+
+  const width = LANE_W * Math.max(lanes.length, 1) + 40;
   const height = ordered.length * ROW_H + 40;
 
   const hoverCommit = hoverId ? byId.get(hoverId) ?? null : null;
@@ -121,7 +147,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
 
   function handleNodeFocus(commit: (typeof ordered)[number]) {
     // Keyboard focus has no cursor — anchor near the node's lane instead.
-    const x = 30 + laneOf(commit.branch) * LANE_W + 48;
+    const x = 30 + laneOf(commit.branch, lanes) * LANE_W + 48;
     const idx = indexById.get(commit.id) ?? 0;
     const y = 24 + idx * ROW_H + 14;
     setHoverPos({ x, y });
@@ -180,11 +206,11 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
 
       {/* Branch lane legend */}
       <div className="flex flex-wrap gap-3 border-b border-[#30363d]/80 px-4 py-2 text-[11px]">
-        {Object.entries(BRANCH_COLORS).map(([b, color]) => (
+        {lanes.map((b) => (
           <span key={b} className="inline-flex items-center gap-1.5 text-slate-400">
             <span
               className="h-2.5 w-2.5 rounded-full"
-              style={{ background: color }}
+              style={{ background: branchColor(b) }}
             />
             {b}
           </span>
@@ -211,14 +237,14 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
           >
             {ordered.map((commit) => {
               const childIdx = indexById.get(commit.id) ?? 0;
-              const x2 = 30 + laneOf(commit.branch) * LANE_W;
+              const x2 = 30 + laneOf(commit.branch, lanes) * LANE_W;
               const y2 = 24 + childIdx * ROW_H + 14;
               return commit.parents.map((p) => {
                 const parent = byId.get(p);
                 if (!parent) return null;
                 const parentIdx = indexById.get(p);
                 if (parentIdx === undefined) return null; // filtered out
-                const x1 = 30 + laneOf(parent.branch) * LANE_W;
+                const x1 = 30 + laneOf(parent.branch, lanes) * LANE_W;
                 const y1 = 24 + parentIdx * ROW_H + 14;
                 const sameLane = x1 === x2;
                 const path = sameLane
@@ -229,7 +255,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
                     key={`${commit.id}->${p}`}
                     d={path}
                     fill="none"
-                    stroke={commit.isMerge ? "#94a3b8" : BRANCH_COLORS[commit.branch] ?? "#22c55e"}
+                    stroke={commit.isMerge ? "#94a3b8" : branchColor(commit.branch)}
                     strokeWidth={commit.isMerge ? 1.6 : 2}
                     strokeDasharray={commit.isMerge ? "5 4" : undefined}
                     opacity={0.75}
@@ -241,9 +267,9 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
 
           <div style={{ width, height }} className="relative">
             {ordered.map((commit, i) => {
-              const color = BRANCH_COLORS[commit.branch] ?? "#22c55e";
+              const color = branchColor(commit.branch);
               const y = 24 + i * ROW_H;
-              const x = 30 + laneOf(commit.branch) * LANE_W;
+              const x = 30 + laneOf(commit.branch, lanes) * LANE_W;
               const isSelected = commit.id === selectedId;
               const isHover = commit.id === hoverId;
               return (

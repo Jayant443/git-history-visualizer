@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 from pathlib import Path
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.git.commits import parse_git_commits
@@ -15,14 +16,21 @@ from src.services.repository_service import (
     store_repository,
 )
 
+def _needs_reingest(repository: Repository) -> bool:
+    if repository.status == RepoStatus.error:
+        return True
+    return repository.status == RepoStatus.ready and repository.commit_count == 0
+
 async def ingest_repository(session: AsyncSession, url: str) -> Repository:
     normalized_url = normalize_repository_url(url)
     if not normalized_url:
         raise ValueError("Repository URL must not be empty")
 
     existing = await get_repository_by_url(session, normalized_url)
-    if existing is not None:
+    if existing is not None and not _needs_reingest(existing):
         return existing
+    if existing is not None and existing.clone_path:
+        await asyncio.to_thread(shutil.rmtree, existing.clone_path, True)
 
     cloned = await asyncio.to_thread(GitRepository.clone, normalized_url)
     branch = await asyncio.to_thread(cloned.get_default_branch)

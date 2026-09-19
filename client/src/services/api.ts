@@ -62,6 +62,7 @@ export interface CommitRead {
   author: AuthorRead | null;
   committer: AuthorRead | null;
   parent_shas: string[];
+  branches: string[];
 }
 
 /** Mirrors `server/src/schemas/files.py`. */
