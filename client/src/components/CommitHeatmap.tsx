@@ -45,7 +45,7 @@ export function CommitHeatmap({ days }: CommitHeatmapProps) {
   }, [days]);
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+    <section className="rounded-xl border border-[#30363d] bg-[#161b22] p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <Flame className="h-4 w-4 text-green-400" />
@@ -126,7 +126,7 @@ export function CommitHeatmap({ days }: CommitHeatmapProps) {
               top: Math.max(anchor.y - 8, 8),
               transform: "translate(-50%, -100%)",
             }}
-            className="pointer-events-none fixed z-50 w-60 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-2xl shadow-black/60"
+            className="pointer-events-none fixed z-50 w-60 rounded-lg border border-[#30363d] bg-[#161b22] p-3 shadow-2xl shadow-black/60"
           >
             <p className="text-xs font-semibold text-slate-100">
               {hover.count === 0 ? "No commits" : `${hover.count} commit${hover.count > 1 ? "s" : ""}`}
