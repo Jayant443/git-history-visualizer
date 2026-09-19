@@ -201,7 +201,8 @@ export default function App() {
   }, [commits]);
 
   const filteredCommits = useMemo(
-    () => (branch === "all" ? commits : commits.filter((c) => c.branch === branch)),
+    () =>
+      branch === "all" ? commits : commits.filter((c) => c.branch === branch),
     [branch, commits],
   );
 
@@ -214,7 +215,11 @@ export default function App() {
     const authors = new Set(filteredCommits.map((c) => c.author.handle));
     const merges = filteredCommits.filter((c) => c.isMerge).length;
     return [
-      { label: "Commits", value: filteredCommits.length, icon: GitCommitHorizontal },
+      {
+        label: "Commits",
+        value: filteredCommits.length,
+        icon: GitCommitHorizontal,
+      },
       { label: "Contributors", value: authors.size, icon: Users },
       { label: "Merges", value: merges, icon: GitFork },
       {
@@ -271,18 +276,25 @@ export default function App() {
 
       <main className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6">
         {error && (
-          <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
-            Backend error: {error} — is FastAPI running on http://localhost:8000?
+          <p
+            role="alert"
+            className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300"
+          >
+            Backend error: {error} — is FastAPI running on
+            http://localhost:8000?
           </p>
         )}
         {repository && (
           <p className="truncate text-xs text-slate-500">
-            <span className="font-semibold text-slate-300">{repository.name}</span>
+            <span className="font-semibold text-slate-300">
+              {repository.name}
+            </span>
             {" · "}
             {repository.status}
             {" · "}
             {repository.commit_count} commits
-            {!isLive && " · showing cached mock data (backend has no commits yet)"}
+            {!isLive &&
+              " · showing cached mock data (backend has no commits yet)"}
           </p>
         )}
 

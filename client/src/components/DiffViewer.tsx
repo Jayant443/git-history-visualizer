@@ -32,11 +32,11 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 480, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 34 }}
-          className="fixed top-0 right-0 z-40 flex h-full w-full max-w-4xl flex-col border-l border-slate-800 bg-slate-950 shadow-2xl shadow-black/70"
+          className="fixed top-0 right-0 z-40 flex h-dvh w-full max-w-4xl flex-col overflow-hidden border-l border-slate-800 bg-slate-950 shadow-2xl shadow-black/70"
           role="dialog"
           aria-label={`Diff for ${commit.short}`}
         >
-          <div className="flex items-start gap-3 border-b border-slate-800 px-4 py-3">
+          <div className="flex shrink-0 items-start gap-3 border-b border-slate-800 px-4 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-100">
                 {commit.message}
@@ -58,7 +58,7 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
           </div>
 
           {/* View toggle */}
-          <div className="flex items-center gap-1 border-b border-slate-800 px-3 py-2">
+          <div className="flex shrink-0 items-center gap-1 border-b border-slate-800 px-3 py-2">
             <div
               className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 p-0.5"
               role="tablist"
@@ -102,12 +102,12 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <div className="w-full shrink-0 border-b border-slate-800 sm:w-64 sm:border-r sm:border-b-0">
-              <p className="px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+            <div className="flex max-h-[38vh] w-full shrink-0 flex-col overflow-hidden border-b border-slate-800 sm:h-full sm:max-h-none sm:min-h-0 sm:w-64 sm:self-stretch sm:border-r sm:border-b-0">
+              <p className="shrink-0 px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
                 Changed files ({commit.files.length})
               </p>
-              <ul className="max-h-40 overflow-auto p-2 sm:max-h-none">
+              <ul className="file-scroll min-h-0 flex-1 overflow-y-auto p-2">
                 {commit.files.map((f) => {
                   const active = f.path === activeFile?.path;
                   return (
@@ -137,7 +137,7 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
               </ul>
             </div>
 
-            <div className="flex min-h-[300px] min-w-0 flex-1 flex-col bg-[#1e1e1e]">
+            <div className="flex min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden bg-[#1e1e1e] sm:min-h-0">
               {isLoadingFiles && !activeFile ? (
                 <p className="p-6 text-sm text-slate-500">
                   Loading file content from backend…
@@ -149,21 +149,23 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
                     file={activeFile}
                   />
                 ) : (
-                  <DiffEditor
-                    key={activeFile.path}
-                    height="100%"
-                    language={activeFile.language}
-                    theme="vs-dark"
-                    original={activeFile.original}
-                    modified={activeFile.modified}
-                    options={{
-                      readOnly: true,
-                      renderSideBySide: true,
-                      minimap: { enabled: false },
-                      scrollBeyondLastLine: false,
-                      fontSize: 12,
-                    }}
-                  />
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <DiffEditor
+                      key={activeFile.path}
+                      height="100%"
+                      language={activeFile.language}
+                      theme="vs-dark"
+                      original={activeFile.original}
+                      modified={activeFile.modified}
+                      options={{
+                        readOnly: true,
+                        renderSideBySide: true,
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
                 )
               ) : (
                 <p className="p-6 text-sm text-slate-500">No file selected.</p>
