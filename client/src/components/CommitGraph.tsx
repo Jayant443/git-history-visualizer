@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { GitMerge, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { BRANCH_COLORS, type MockCommit } from "../data/mockData";
@@ -34,9 +34,57 @@ function formatDateTime(iso: string): string {
 export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps) {
   const [zoom, setZoom] = useState(1);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [sectionWidth, setSectionWidth] = useState(800);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Newest first for display; edges resolved by id lookup.
-  const ordered = useMemo(() => [...commits].reverse(), [commits]);
+  // Oldest-first topological order for display: the root/initial commit
+  // renders at the very top, children flow downwards, and the most recent
+  // commit lands at the very bottom. Date breaks ties between siblings.
+  const ordered = useMemo(() => {
+    const byIdLocal = new Map(commits.map((c) => [c.id, c]));
+    const indegree = new Map<string, number>();
+    const childrenOf = new Map<string, string[]>();
+    for (const c of commits) {
+      const knownParents = c.parents.filter((p) => byIdLocal.has(p));
+      indegree.set(c.id, knownParents.length);
+      for (const p of knownParents) {
+        const arr = childrenOf.get(p) ?? [];
+        arr.push(c.id);
+        childrenOf.set(p, arr);
+      }
+    }
+    const dateOf = (id: string) => byIdLocal.get(id)?.date ?? "";
+    const byDate = (a: string, b: string) =>
+      dateOf(a) < dateOf(b) ? -1 : dateOf(a) > dateOf(b) ? 1 : a < b ? -1 : 1;
+    const ready = commits
+      .filter((c) => (indegree.get(c.id) ?? 0) === 0)
+      .map((c) => c.id)
+      .sort(byDate);
+    const out: MockCommit[] = [];
+    while (ready.length > 0) {
+      ready.sort(byDate);
+      const id = ready.shift() as string;
+      const node = byIdLocal.get(id);
+      if (!node) continue;
+      out.push(node);
+      for (const child of childrenOf.get(id) ?? []) {
+        indegree.set(child, (indegree.get(child) ?? 1) - 1);
+        if (indegree.get(child) === 0) ready.push(child);
+      }
+    }
+    // Cycle fallback (shouldn't happen with git DAGs): append leftovers by date.
+    if (out.length < commits.length) {
+      const seen = new Set(out.map((c) => c.id));
+      out.push(
+        ...commits
+          .filter((c) => !seen.has(c.id))
+          .sort((a, b) => byDate(a.id, b.id)),
+      );
+    }
+    return out;
+  }, [commits]);
   const byId = useMemo(() => new Map(commits.map((c) => [c.id, c])), [commits]);
   const indexById = useMemo(
     () => new Map(ordered.map((c, i) => [c.id, i])),
@@ -48,18 +96,62 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
 
   const hoverCommit = hoverId ? byId.get(hoverId) ?? null : null;
 
+  // Keep the viewport pinned to the top whenever a new history loads so
+  // the root/initial commit is immediately visible.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [commits]);
+
+  function updateHoverPos(e: React.MouseEvent) {
+    const rect = sectionRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setSectionWidth(rect.width);
+    setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }
+
+  function handleNodeEnter(e: React.MouseEvent, id: string) {
+    updateHoverPos(e);
+    setHoverId(id);
+  }
+
+  function handleNodeLeave(id: string) {
+    setHoverId((cur) => (cur === id ? null : cur));
+    setHoverPos(null);
+  }
+
+  function handleNodeFocus(commit: (typeof ordered)[number]) {
+    // Keyboard focus has no cursor — anchor near the node's lane instead.
+    const x = 30 + laneOf(commit.branch) * LANE_W + 48;
+    const idx = indexById.get(commit.id) ?? 0;
+    const y = 24 + idx * ROW_H + 14;
+    setHoverPos({ x, y });
+    setHoverId(commit.id);
+  }
+
+  const CARD_W = 288;
+  const cardLeft =
+    hoverPos == null
+      ? 0
+      : hoverPos.x + CARD_W + 28 > sectionWidth
+        ? Math.max(8, hoverPos.x - CARD_W - 20)
+        : hoverPos.x + 20;
+  const cardTop = hoverPos == null ? 0 : Math.max(8, hoverPos.y - 24);
+
   return (
-    <section className="relative flex min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/60">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-3">
+    <section
+      ref={sectionRef}
+      className="relative flex min-h-0 flex-col rounded-xl border border-[#30363d] bg-[#161b22]"
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#30363d] px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-100">Commit graph</h2>
-        <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-400">
+        <span className="rounded-full border border-[#30363d] px-2 py-0.5 text-[11px] text-slate-400">
           {commits.length} commits
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.15).toFixed(2)))}
-            className="rounded-md border border-slate-700 p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
+            className="rounded-md border border-[#30363d] p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
             aria-label="Zoom out"
           >
             <ZoomOut className="h-4 w-4" />
@@ -70,7 +162,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
           <button
             type="button"
             onClick={() => setZoom((z) => Math.min(1.5, +(z + 0.15).toFixed(2)))}
-            className="rounded-md border border-slate-700 p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
+            className="rounded-md border border-[#30363d] p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
             aria-label="Zoom in"
           >
             <ZoomIn className="h-4 w-4" />
@@ -78,7 +170,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
           <button
             type="button"
             onClick={() => setZoom(1)}
-            className="rounded-md border border-slate-700 p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
+            className="rounded-md border border-[#30363d] p-1.5 text-slate-300 hover:border-green-500/50 hover:text-green-300"
             aria-label="Reset zoom"
           >
             <Maximize2 className="h-4 w-4" />
@@ -87,7 +179,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
       </div>
 
       {/* Branch lane legend */}
-      <div className="flex flex-wrap gap-3 border-b border-slate-800/80 px-4 py-2 text-[11px]">
+      <div className="flex flex-wrap gap-3 border-b border-[#30363d]/80 px-4 py-2 text-[11px]">
         {Object.entries(BRANCH_COLORS).map(([b, color]) => (
           <span key={b} className="inline-flex items-center gap-1.5 text-slate-400">
             <span
@@ -102,7 +194,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
         </span>
       </div>
 
-      <div className="graph-scroll min-h-[320px] flex-1 overflow-auto">
+      <div ref={scrollRef} className="graph-scroll min-h-[320px] flex-1 overflow-auto">
         <div
           style={{
             width: width * zoom + 320,
@@ -163,10 +255,11 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
                   <button
                     type="button"
                     onClick={() => onSelect(commit)}
-                    onMouseEnter={() => setHoverId(commit.id)}
-                    onMouseLeave={() => setHoverId((id) => (id === commit.id ? null : id))}
-                    onFocus={() => setHoverId(commit.id)}
-                    onBlur={() => setHoverId((id) => (id === commit.id ? null : id))}
+                    onMouseEnter={(e) => handleNodeEnter(e, commit.id)}
+                    onMouseMove={updateHoverPos}
+                    onMouseLeave={() => handleNodeLeave(commit.id)}
+                    onFocus={() => handleNodeFocus(commit)}
+                    onBlur={() => handleNodeLeave(commit.id)}
                     aria-label={`${commit.short} ${commit.message}`}
                     className="relative flex h-7 w-7 items-center justify-center rounded-full focus:outline-none"
                     style={{ marginLeft: x - 14 }}
@@ -179,7 +272,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
                       style={{
                         width: commit.isMerge ? 18 : NODE_R * 2,
                         height: commit.isMerge ? 18 : NODE_R * 2,
-                        background: commit.isMerge ? "#0f172a" : color,
+                        background: commit.isMerge ? "#161b22" : color,
                         border: `2px solid ${commit.isMerge ? "#94a3b8" : color}`,
                         boxShadow: isSelected
                           ? `0 0 0 4px ${color}44, 0 0 14px ${color}`
@@ -200,13 +293,14 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
                   <button
                     type="button"
                     onClick={() => onSelect(commit)}
-                    onMouseEnter={() => setHoverId(commit.id)}
-                    onMouseLeave={() => setHoverId((id) => (id === commit.id ? null : id))}
+                    onMouseEnter={(e) => handleNodeEnter(e, commit.id)}
+                    onMouseMove={updateHoverPos}
+                    onMouseLeave={() => handleNodeLeave(commit.id)}
                     className={cn(
                       "max-w-64 truncate rounded-md border px-2.5 py-1.5 text-left text-xs transition",
                       isSelected
                         ? "border-green-500/60 bg-green-500/10 text-slate-100"
-                        : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-600",
+                        : "border-[#30363d] bg-[#0d1117]/80 text-slate-300 hover:border-slate-600",
                     )}
                   >
                     <span className="block truncate font-medium">{commit.message}</span>
@@ -221,16 +315,17 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
         </div>
       </div>
 
-      {/* Floating hover card */}
+      {/* Hover card — floats adjacent to the hovered node */}
       <AnimatePresence>
-        {hoverCommit && (
+        {hoverCommit && hoverPos && (
           <motion.div
             key={hoverCommit.id}
             initial={{ opacity: 0, y: 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 480, damping: 30 }}
-            className="pointer-events-none absolute bottom-4 left-4 z-20 w-72 rounded-xl border border-slate-700 bg-slate-950/95 p-3.5 shadow-2xl shadow-black/70 backdrop-blur"
+            style={{ left: cardLeft, top: cardTop }}
+            className="pointer-events-none absolute z-20 w-72 rounded-xl border border-[#30363d] bg-[#161b22]/95 p-3.5 shadow-2xl shadow-black/70 backdrop-blur"
           >
             <div className="flex items-center gap-2.5">
               <span
@@ -248,7 +343,7 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
                 </p>
                 <p className="text-[11px] text-slate-500">{hoverCommit.author.handle}</p>
               </div>
-              <span className="ml-auto rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-green-300">
+              <span className="ml-auto rounded bg-[#21262d] px-1.5 py-0.5 font-mono text-[10px] text-green-300">
                 {hoverCommit.short}
               </span>
             </div>

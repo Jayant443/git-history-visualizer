@@ -117,8 +117,8 @@ function adaptDiffFiles(diff: CommitDiff): FileChange[] {
       const patchLines = modified === "" ? [] : modified.split("\n");
       return {
         path: f.path,
-        additions: f.additions,
-        deletions: f.deletions,
+        additions: f.additions ?? 0,
+        deletions: f.deletions ?? 0,
         language: languageForPath(f.path),
         original,
         modified,
@@ -196,6 +196,9 @@ export default function App() {
     const sha = selected.id;
     async function loadFiles() {
       setFilesLoading(true);
+      // Drop the previous commit's files so the panel shows its loading
+      // state instead of briefly flashing stale content.
+      setSelectedFiles([]);
       try {
         const repoId = repository?.id ?? backendCommits[0]?.repository_id;
         if (repoId === undefined) return;
@@ -293,7 +296,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 antialiased">
+    <div className="min-h-screen bg-[#010409] text-slate-200 antialiased">
       <Navbar
         repoUrl={repoUrl}
         branch={branch}
@@ -332,7 +335,7 @@ export default function App() {
           {stats.map((s) => (
             <div
               key={s.label}
-              className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
+              className="rounded-xl border border-[#30363d] bg-[#161b22] px-4 py-3"
             >
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <s.icon className="h-3.5 w-3.5 text-green-400" />
