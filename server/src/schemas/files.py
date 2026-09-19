@@ -27,3 +27,20 @@ class BlobContent(BaseModel):
     content: Optional[str] = None
 
     model_config = ConfigDict(populate_by_name=True)
+
+class DiffFile(BaseModel):
+    path: str
+    original: str = ""
+    modified: str = ""
+    additions: int = 0
+    deletions: int = 0
+    binary: bool = False
+
+    model_config = ConfigDict(populate_by_name=True)
+
+class CommitDiff(BaseModel):
+    sha: str
+    parent_sha: Optional[str] = None
+    files: list[DiffFile] = []
+
+    model_config = ConfigDict(populate_by_name=True)

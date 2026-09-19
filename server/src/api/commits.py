@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
 from src.git.files import read_all_files_at_commit, read_blob_content, read_tree
+from src.git.diff import read_commit_diff
 from src.models.commit import CommitRead
 from src.models.repository import Repository
-from src.schemas.files import BlobContent, FileContent, TreeEntry
+from src.schemas.files import BlobContent, CommitDiff, FileContent, TreeEntry
 from src.services.commit_service import (
     get_all_commits,
     get_commit_by_short_sha,
@@ -81,6 +82,18 @@ async def fetch_commit_files(repository_id: int, sha: str, session: AsyncSession
     repo = await _require_clone(session, repository_id)
     try:
         return await asyncio.to_thread(read_all_files_at_commit, repo.clone_path, sha)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+@commit_router.get("/{repository_id:int}/commits/{sha}/diff", response_model=CommitDiff)
+async def fetch_commit_diff(repository_id: int, sha: str, session: AsyncSession = Depends(get_session)):
+    repo = await _require_clone(session, repository_id)
+    try:
+        return await asyncio.to_thread(read_commit_diff, repo.clone_path, sha)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except LookupError as e:
