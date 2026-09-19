@@ -9,11 +9,13 @@ import { CodePlayback } from "./CodePlayback";
 interface DiffViewerProps {
   commit: MockCommit | null;
   onClose: () => void;
+  /** True while live file content is being fetched from the backend. */
+  isLoadingFiles?: boolean;
 }
 
 type ViewMode = "playback" | "diff";
 
-export function DiffViewer({ commit, onClose }: DiffViewerProps) {
+export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffViewerProps) {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>("playback");
 
@@ -136,7 +138,11 @@ export function DiffViewer({ commit, onClose }: DiffViewerProps) {
             </div>
 
             <div className="flex min-h-[300px] min-w-0 flex-1 flex-col bg-[#1e1e1e]">
-              {activeFile ? (
+              {isLoadingFiles && !activeFile ? (
+                <p className="p-6 text-sm text-slate-500">
+                  Loading file content from backend…
+                </p>
+              ) : activeFile ? (
                 mode === "playback" ? (
                   <CodePlayback
                     key={`${commit.id}:${activeFile.path}`}

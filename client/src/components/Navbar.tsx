@@ -4,6 +4,7 @@ import { BRANCHES } from "../data/mockData";
 interface NavbarProps {
   repoUrl: string;
   branch: string;
+  branches?: string[];
   isLoading: boolean;
   onRepoUrlChange: (v: string) => void;
   onBranchChange: (v: string) => void;
@@ -13,6 +14,7 @@ interface NavbarProps {
 export function Navbar({
   repoUrl,
   branch,
+  branches = [...BRANCHES],
   isLoading,
   onRepoUrlChange,
   onBranchChange,
@@ -57,7 +59,7 @@ export function Navbar({
               aria-label="Branch filter"
             >
               <option value="all">All branches</option>
-              {BRANCHES.map((b) => (
+              {branches.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
