@@ -56,9 +56,9 @@ export function CodePlayback({ file }: CodePlaybackProps) {
   const pct = total === 0 ? 100 : Math.round((currentLine / total) * 100);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {/* Playback toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2">
         <button
           type="button"
           onClick={() => {
@@ -111,7 +111,7 @@ export function CodePlayback({ file }: CodePlaybackProps) {
       </div>
 
       {/* Progress bar */}
-      <div className="h-0.5 w-full bg-slate-800">
+      <div className="h-0.5 w-full shrink-0 bg-slate-800">
         <div
           className="h-full bg-green-500 transition-[width]"
           style={{ width: `${pct}%` }}
@@ -119,7 +119,7 @@ export function CodePlayback({ file }: CodePlaybackProps) {
       </div>
 
       {/* Streaming editor */}
-      <div className="min-h-0 flex-1 bg-[#1e1e1e]">
+      <div className="min-h-0 flex-1 overflow-hidden bg-[#1e1e1e]">
         <Editor
           height="100%"
           path={file.path}

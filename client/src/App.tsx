@@ -13,6 +13,7 @@ import {
 } from "./data/mockData";
 import {
   api,
+  type CommitDiff,
   type CommitRead,
   type FileContent,
   type RepositoryRead,
@@ -105,6 +106,28 @@ function adaptFiles(files: FileContent[]): FileChange[] {
     });
 }
 
+/** Adapt the real `CommitDiff` payload: true parent content + true counts. */
+function adaptDiffFiles(diff: CommitDiff): FileChange[] {
+  return diff.files
+    .filter((f) => !f.binary)
+    .slice(0, 50)
+    .map((f) => {
+      const original = f.original ?? "";
+      const modified = f.modified ?? "";
+      const patchLines = modified === "" ? [] : modified.split("\n");
+      return {
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+        language: languageForPath(f.path),
+        original,
+        modified,
+        rawContent: modified,
+        patchLines,
+      };
+    });
+}
+
 function buildHeatmapFromCommits(commits: CommitRead[]): HeatmapDay[] {
   const counts = new Map<string, { count: number; authors: Set<string> }>();
   for (const c of commits) {
@@ -176,8 +199,15 @@ export default function App() {
       try {
         const repoId = repository?.id ?? backendCommits[0]?.repository_id;
         if (repoId === undefined) return;
-        const files = await api.getCommitFiles(repoId, sha);
-        if (!cancelled) setSelectedFiles(adaptFiles(files));
+        // Real diff pipeline: parent content + modified content + true counts.
+        try {
+          const diff = await api.getCommitDiff(repoId, sha);
+          if (!cancelled) setSelectedFiles(adaptDiffFiles(diff));
+        } catch {
+          // Fallback for older backends: full-file snapshot at this commit.
+          const files = await api.getCommitFiles(repoId, sha);
+          if (!cancelled) setSelectedFiles(adaptFiles(files));
+        }
       } catch {
         if (!cancelled) setSelectedFiles([]);
       } finally {
@@ -201,7 +231,8 @@ export default function App() {
   }, [commits]);
 
   const filteredCommits = useMemo(
-    () => (branch === "all" ? commits : commits.filter((c) => c.branch === branch)),
+    () =>
+      branch === "all" ? commits : commits.filter((c) => c.branch === branch),
     [branch, commits],
   );
 
@@ -214,7 +245,11 @@ export default function App() {
     const authors = new Set(filteredCommits.map((c) => c.author.handle));
     const merges = filteredCommits.filter((c) => c.isMerge).length;
     return [
-      { label: "Commits", value: filteredCommits.length, icon: GitCommitHorizontal },
+      {
+        label: "Commits",
+        value: filteredCommits.length,
+        icon: GitCommitHorizontal,
+      },
       { label: "Contributors", value: authors.size, icon: Users },
       { label: "Merges", value: merges, icon: GitFork },
       {
@@ -271,18 +306,25 @@ export default function App() {
 
       <main className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6">
         {error && (
-          <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
-            Backend error: {error} — is FastAPI running on http://localhost:8000?
+          <p
+            role="alert"
+            className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300"
+          >
+            Backend error: {error} — is FastAPI running on
+            http://localhost:8000?
           </p>
         )}
         {repository && (
           <p className="truncate text-xs text-slate-500">
-            <span className="font-semibold text-slate-300">{repository.name}</span>
+            <span className="font-semibold text-slate-300">
+              {repository.name}
+            </span>
             {" · "}
             {repository.status}
             {" · "}
             {repository.commit_count} commits
-            {!isLive && " · showing cached mock data (backend has no commits yet)"}
+            {!isLive &&
+              " · showing cached mock data (backend has no commits yet)"}
           </p>
         )}
 
