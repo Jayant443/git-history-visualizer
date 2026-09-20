@@ -99,7 +99,7 @@ async def clear_commits(session: AsyncSession, repository: Repository) -> int:
     await session.commit()
     return len(existing)
 
-async def persist_commits(session: AsyncSession, repository: Repository, records: List[ParsedCommit], _attempt: int = 0) -> int:
+async def persist_commits(session: AsyncSession, repository: Repository, records: List[ParsedCommit], _attempt: int = 0, sequence_offset: int = 0) -> int:
     if repository.id is None:
         await session.flush()
     if not records:
@@ -135,6 +135,7 @@ async def persist_commits(session: AsyncSession, repository: Repository, records
         authored_at = _naive_utc(record.author_timestamp)
         committed_at = _naive_utc(record.commit_timestamp)
         is_merge = record.parent_count > 1
+        sequence_index = sequence_offset + index
         existing = existing_by_sha.get(record.sha)
         if existing is not None:
             existing.short_sha = record.short_sha
@@ -143,7 +144,7 @@ async def persist_commits(session: AsyncSession, repository: Repository, records
             existing.authored_at = authored_at
             existing.committed_at = committed_at
             existing.is_merge = is_merge
-            existing.sequence_index = index
+            existing.sequence_index = sequence_index
             existing.author_id = author.id
             existing.committer_id = committer.id
             session.add(existing)
@@ -158,7 +159,7 @@ async def persist_commits(session: AsyncSession, repository: Repository, records
             authored_at=authored_at,
             committed_at=committed_at,
             is_merge=is_merge,
-            sequence_index=index,
+            sequence_index=sequence_index,
             author_id=author.id,
             committer_id=committer.id,
         )
@@ -173,7 +174,7 @@ async def persist_commits(session: AsyncSession, repository: Repository, records
         fresh: Optional[Repository] = None
         if repository.id is not None:
             fresh = await session.get(Repository, repository.id)
-        return await persist_commits(session, fresh or repository, records, _attempt + 1)
+        return await persist_commits(session, fresh or repository, records, _attempt + 1, sequence_offset)
 
     commit_ids = [commit.id for commit in commit_by_sha.values() if commit.id is not None]
     existing_links: Set[Tuple[int, int]] = set()
@@ -232,6 +233,15 @@ def _validate_sha(sha: str) -> str:
     if not sha or _SHA_RE.fullmatch(sha) is None:
         raise ValueError(f"{sha!r} is not a valid commit SHA")
     return sha
+
+async def count_commits(session: AsyncSession, repository_id: int) -> int:
+    result = await session.exec(
+        select(func.count(Commit.id)).where(Commit.repository_id == repository_id)
+    )
+    raw = result.one()
+    if isinstance(raw, (tuple, list)):
+        raw = raw[0] if raw else 0
+    return int(raw) if raw is not None else 0
 
 async def list_commits(session: AsyncSession, repository_id: int, *, limit: int = 100, offset: int = 0) -> List[Commit]:
     result = await session.exec(

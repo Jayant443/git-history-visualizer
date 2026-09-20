@@ -74,25 +74,47 @@ def _parse_line(line: str) -> Optional[Commit]:
         commit_type="merge" if parent_count > 1 else "normal",
     )
 
+def _page_shas(repo: Path, skip: int, max_count: Optional[int], total: int) -> List[str]:
+    end = total if max_count is None else min(skip + max_count, total)
+    if skip >= end:
+        return []
+    nf_skip = total - end
+    nf_count = end - skip
+    output = run_git(
+        ["log", "--all", "--topo-order", "--format=%H", f"--skip={nf_skip}", "-n", str(nf_count)],
+        cwd=repo,
+    )
+    shas = [line.strip() for line in (output or "").splitlines() if line.strip()]
+    shas.reverse()
+    return shas
+
+
 def parse_git_commits(repo_path: str, max_count: Optional[int] = 100, skip: int = 0) -> List[Commit]:
     repo = _ensure_repo(repo_path)
     if max_count is not None and max_count < 1:
         raise ValueError("max_count must be positive")
     if skip < 0:
         raise ValueError("skip must not be negative")
-    output = run_git(["log", "--all", f"--pretty=format:{_FORMAT}"], cwd=repo) or ""
+    total = count_git_commits(str(repo))
+    shas = _page_shas(repo, skip, max_count, total)
+    if not shas:
+        return []
+    output = run_git(["log", "--no-walk", f"--pretty=format:{_FORMAT}", *shas], cwd=repo) or ""
     commits: List[Commit] = []
     for line in output.splitlines():
         commit = _parse_line(line)
         if commit is not None:
             commits.append(commit)
-    commits.reverse()
     commits.sort(key=lambda c: (c.commit_timestamp, c.author_timestamp, c.sha))
-    if skip:
-        commits = commits[skip:]
-    if max_count is not None:
-        commits = commits[:max_count]
     return commits
+
+def count_git_commits(repo_path: str) -> int:
+    repo = _ensure_repo(repo_path)
+    output = run_git(["rev-list", "--all", "--count"], cwd=repo).strip()
+    try:
+        return max(int(output), 0)
+    except ValueError as exc:
+        raise RuntimeError(f"Cannot count commits in {repo}") from exc
 
 def get_commit_by_sha(repo_path: str, sha: str) -> Optional[Commit]:
     repo = _ensure_repo(repo_path)

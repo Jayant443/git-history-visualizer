@@ -1,14 +1,17 @@
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 from src.models.commit import CommitRead
+from src.schemas.files import CommitDiff
 
 
 class CommitWithBranches(CommitRead):
-    """Commit payload with branch containment attached.
-
-    `branches` lists every branch whose tip reaches this commit via
-    parent links (sorted by name), so the frontend learns both how many
-    branches exist and where each commit sits. Purely additive —
-    clients unaware of the field ignore it.
-    """
-
     branches: List[str] = []
+
+class CommitWithFiles(CommitWithBranches):
+    diff: Optional[CommitDiff] = None
+
+class CommitPage(BaseModel):
+    commits: List[CommitWithFiles] = []
+    total: int = 0
+    ingested: int = 0
+    has_more: bool = False

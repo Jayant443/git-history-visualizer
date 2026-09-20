@@ -6,13 +6,18 @@ from src.core.database import get_session
 from src.git.files import read_all_files_at_commit, read_blob_content, read_tree
 from src.git.diff import read_commit_diff
 from src.models.repository import Repository
-from src.schemas.branches import CommitWithBranches
+from src.schemas.branches import CommitPage, CommitWithBranches, CommitWithFiles
 from src.schemas.files import BlobContent, CommitDiff, FileContent, TreeEntry
 from src.services.commit_service import (
     get_all_commits,
     get_commit_by_short_sha,
     list_commits,
     to_commit_with_branches_list,
+)
+from src.services.ingest_service import (
+    INITIAL_COMMIT_PAGE_SIZE,
+    MAX_BACKFILL_PER_REQUEST,
+    fetch_commit_page,
 )
 from src.services.repository_service import get_repository
 
@@ -45,14 +50,27 @@ async def fetch_all_commits(repository_id: int, session: AsyncSession = Depends(
     rows = await get_all_commits(session, repository_id)
     return await to_commit_with_branches_list(session, rows)
 
-@commit_router.get("/{repository_id:int}/commits/next", response_model=List[CommitWithBranches])
-async def fetch_next_commits(repository_id: int, skip: int = Query(default=0, ge=0), limit: int = Query(default=10, ge=1, le=500), session: AsyncSession = Depends(get_session),):
-    await _require_repository(session, repository_id)
+@commit_router.get("/{repository_id:int}/commits/next", response_model=CommitPage)
+async def fetch_next_commits(repository_id: int, skip: int = Query(default=0, ge=0), limit: int = Query(default=INITIAL_COMMIT_PAGE_SIZE, ge=1, le=MAX_BACKFILL_PER_REQUEST), with_files: bool = Query(default=True), session: AsyncSession = Depends(get_session),):
     try:
-        rows = await list_commits(session, repository_id, limit=limit, offset=skip)
+        enriched, diffs, total, ingested = await fetch_commit_page(
+            session, repository_id, skip=skip, limit=limit, with_files=with_files
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return await to_commit_with_branches_list(session, rows)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return CommitPage(
+        commits=[
+            CommitWithFiles(**commit.model_dump(), diff=diffs.get(commit.sha))
+            for commit in enriched
+        ],
+        total=total,
+        ingested=ingested,
+        has_more=ingested < total,
+    )
 
 @commit_router.get("/{repository_id:int}/commits/{short_sha}", response_model=CommitWithBranches)
 async def fetch_commit_by_short_sha(repository_id: int, short_sha: str, session: AsyncSession = Depends(get_session)):
