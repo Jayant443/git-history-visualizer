@@ -159,9 +159,14 @@ export default function App() {
   const [selected, setSelected] = useState<MockCommit | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<FileChange[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [isExpanding, setIsExpanding] = useState(false);
 
   const isLive = backendCommits.length > 0;
   const defaultBranch = repository?.default_branch ?? "main";
+  // Total known from full-history stats; the button hides once everything
+  // loaded is everything there is.
+  const canExpand =
+    isLive && repoStats !== null && backendCommits.length < repoStats.total;
 
   // Initial load: pick up the most recent known repository + its commits.
   useEffect(() => {
@@ -347,6 +352,32 @@ export default function App() {
     }
   }
 
+  // Expand — fetch the next page (metadata + branches; file content loads
+  // on demand per commit) and append it at the end of the graph.
+  async function handleExpand() {
+    if (!isLive || repository === null || isExpanding || !canExpand) return;
+    setIsExpanding(true);
+    try {
+      const page = await api.getNextCommits(
+        repository.id,
+        backendCommits.length,
+        20,
+        false,
+      );
+      setBackendCommits((prev) => {
+        const seen = new Set(prev.map((c) => c.sha));
+        const fresh = page.commits.filter((c) => !seen.has(c.sha));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to load more commits",
+      );
+    } finally {
+      setIsExpanding(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#010409] text-slate-200 antialiased">
       <Navbar
@@ -408,6 +439,17 @@ export default function App() {
             commits={filteredCommits}
             selectedId={selected?.id ?? null}
             onSelect={setSelected}
+            expand={
+              isLive && repoStats
+                ? {
+                    canExpand,
+                    isExpanding,
+                    loaded: backendCommits.length,
+                    total: repoStats.total,
+                    onExpand: () => void handleExpand(),
+                  }
+                : undefined
+            }
           />
         </div>
 

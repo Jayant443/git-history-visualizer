@@ -1,13 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { GitMerge, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ChevronsDown,
+  GitMerge,
+  LoaderCircle,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { BRANCH_COLORS, type MockCommit } from "../data/mockData";
 import { cn } from "../lib/cn";
+
+interface ExpandProps {
+  /** More commits exist beyond the loaded window. */
+  canExpand: boolean;
+  /** A page request is in flight — spinner spins until data arrives. */
+  isExpanding: boolean;
+  loaded: number;
+  total: number;
+  onExpand: () => void;
+}
 
 interface CommitGraphProps {
   commits: MockCommit[];
   selectedId: string | null;
   onSelect: (c: MockCommit) => void;
+  expand?: ExpandProps;
 }
 
 const ROW_H = 76;
@@ -49,7 +67,7 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps) {
+export function CommitGraph({ commits, selectedId, onSelect, expand }: CommitGraphProps) {
   const [zoom, setZoom] = useState(1);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -123,9 +141,15 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
   const hoverCommit = hoverId ? byId.get(hoverId) ?? null : null;
 
   // Keep the viewport pinned to the top whenever a new history loads so
-  // the root/initial commit is immediately visible.
+  // the root/initial commit is immediately visible — but not when commits
+  // are merely appended (expand), which would yank the scroll position.
+  const firstIdRef = useRef<string | null>(null);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    const firstId = commits[0]?.id ?? null;
+    if (firstId !== firstIdRef.current) {
+      firstIdRef.current = firstId;
+      scrollRef.current?.scrollTo({ top: 0 });
+    }
   }, [commits]);
 
   function updateHoverPos(e: React.MouseEvent) {
@@ -341,8 +365,31 @@ export function CommitGraph({ commits, selectedId, onSelect }: CommitGraphProps)
         </div>
       </div>
 
-      {/* Hover card — floats adjacent to the hovered node */}
-      <AnimatePresence>
+      {/* Expand — loads the next page of commits, appended at the end */}
+      {expand && (expand.canExpand || expand.isExpanding) && (
+        <div className="flex justify-center border-t border-[#30363d]/80 px-4 py-2">
+          <button
+            type="button"
+            onClick={expand.onExpand}
+            disabled={!expand.canExpand || expand.isExpanding}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#30363d] px-3 py-1 text-[11px] text-slate-500 transition hover:border-green-500/40 hover:text-green-300 disabled:cursor-wait disabled:opacity-70"
+          >
+            {expand.isExpanding ? (
+              <LoaderCircle
+                className="h-3.5 w-3.5 animate-spin"
+                aria-label="Loading more commits"
+              />
+            ) : (
+              <ChevronsDown className="h-3.5 w-3.5" />
+            )}
+            {expand.isExpanding
+              ? "Loading…"
+              : `Show more (${expand.loaded} of ${expand.total})`}
+          </button>
+        </div>
+      )}
+
+      {/* Hover card — floats adjacent to the hovered node */}      <AnimatePresence>
         {hoverCommit && hoverPos && (
           <motion.div
             key={hoverCommit.id}

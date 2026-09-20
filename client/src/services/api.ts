@@ -108,6 +108,19 @@ export interface CommitDiff {
   files: DiffFile[];
 }
 
+/** Mirrors `server/src/schemas/branches.py::CommitWithFiles`. */
+export interface CommitWithFiles extends CommitRead {
+  diff: CommitDiff | null;
+}
+
+/** Mirrors `server/src/schemas/branches.py::CommitPage`. */
+export interface CommitPage {
+  commits: CommitWithFiles[];
+  total: number;
+  ingested: number;
+  has_more: boolean;
+}
+
 export interface CloneRepoRequest {
   url: string;
 }
@@ -152,7 +165,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(
+  params: Record<string, string | number | boolean | undefined>,
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) search.set(key, String(value));
@@ -211,14 +226,15 @@ export const api = {
   getAllCommits: (repositoryId: number): Promise<CommitRead[]> =>
     request<CommitRead[]>(`/repositories/${repositoryId}/commits/all`),
 
-  /** GET /repositories/{id}/commits/next — windowed commit list. */
+  /** GET /repositories/{id}/commits/next — backfilled page with file content. */
   getNextCommits: (
     repositoryId: number,
     skip = 0,
-    limit = 10,
-  ): Promise<CommitRead[]> =>
-    request<CommitRead[]>(
-      `/repositories/${repositoryId}/commits/next${query({ skip, limit })}`,
+    limit = 20,
+    withFiles = true,
+  ): Promise<CommitPage> =>
+    request<CommitPage>(
+      `/repositories/${repositoryId}/commits/next${query({ skip, limit, with_files: withFiles })}`,
     ),
 
   /** GET /repositories/{id}/commits/{short_sha} — single commit. */
