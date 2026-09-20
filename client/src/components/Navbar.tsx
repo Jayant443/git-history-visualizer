@@ -23,12 +23,17 @@ export function Navbar({
     <header className="sticky top-0 z-30 border-b border-[#30363d] bg-[#0d1117]/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-500/15 text-green-400 ring-1 ring-green-500/30">
-            <GitBranch className="h-5 w-5" />
+          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl ring-1 ring-green-500/30">
+            <img
+              src="/logo.jpeg"
+              alt="Logo"
+              // Changes are here: h-full w-full and object-cover
+              className="h-full w-full object-cover"
+            />
           </span>
           <div className="leading-tight">
             <p className="text-sm font-bold tracking-tight text-slate-100">
-              CommitScope
+              Git Wiz
             </p>
             <p className="text-xs text-slate-500">Git Commit Visualizer</p>
           </div>
@@ -73,7 +78,10 @@ export function Navbar({
             className="inline-flex items-center justify-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-green-400 disabled:cursor-wait disabled:opacity-70"
           >
             {isLoading && (
-              <LoaderCircle className="h-4 w-4 animate-spin" aria-label="Loading" />
+              <LoaderCircle
+                className="h-4 w-4 animate-spin"
+                aria-label="Loading"
+              />
             )}
             {isLoading ? "Visualizing…" : "Visualize Repo"}
           </button>
