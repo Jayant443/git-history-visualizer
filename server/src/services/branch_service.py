@@ -3,11 +3,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+import asyncio
 from src.git.refs import BranchInfo, TagInfo
+from src.git.stats import get_repo_stats
 from src.models.branch import Branch, BranchRead
 from src.models.commit import Commit
 from src.models.repository import Repository
 from src.models.tag import Tag, TagRead
+from src.schemas.branches import RepositoryStats, StatDay
+from src.services.repository_service import get_repository
 
 _BRANCH_EAGER = (selectinload(Branch.head_commit),)
 _TAG_EAGER = (selectinload(Tag.commit),)
@@ -160,4 +164,31 @@ def to_tag_read(tag: Tag) -> TagRead:
         name=tag.name,
         message=tag.message,
         commit_sha=tag.commit.sha,
+    )
+
+async def get_repository_stats(session: AsyncSession, repository_id: int, branch: Optional[str] = None) -> RepositoryStats:
+    repository = await get_repository(session, repository_id)
+    if repository is None or repository.id is None:
+        raise LookupError("Repository not found")
+    if not repository.clone_path:
+        raise ValueError("Repository has no local clone")
+    scope = (branch or "").strip()
+    rev: Optional[str] = None
+    if scope and scope.lower() != "all":
+        result = await session.exec(select(Branch).where(Branch.repository_id == repository.id, Branch.name == scope))
+        branch_row = result.first()
+        if branch_row is None:
+            raise LookupError(f"No branch {scope!r}")
+        namespace = "refs/remotes" if branch_row.is_remote else "refs/heads"
+        rev = f"{namespace}/{branch_row.name}"
+    stats = await asyncio.to_thread(get_repo_stats, repository.clone_path, rev)
+    return RepositoryStats(
+        total=stats.total,
+        merges=stats.merges,
+        contributors=stats.contributors,
+        active_days=stats.active_days,
+        first_day=stats.first_day,
+        last_day=stats.last_day,
+        scope=scope if rev is not None else "all",
+        days=[StatDay(date=d.date, count=d.count, authors=list(d.authors)) for d in stats.days],
     )

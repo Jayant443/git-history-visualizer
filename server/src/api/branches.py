@@ -1,10 +1,12 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
 from src.models.branch import BranchRead
 from src.models.tag import TagRead
+from src.schemas.branches import RepositoryStats
 from src.services.branch_service import (
+    get_repository_stats,
     list_branches,
     list_tags,
     to_branch_read,
@@ -14,11 +16,9 @@ from src.services.repository_service import get_repository
 
 branch_router = APIRouter()
 
-
 async def _require_repository(session: AsyncSession, repository_id: int) -> None:
     if await get_repository(session, repository_id) is None:
         raise HTTPException(status_code=404, detail="Repository not found")
-
 
 @branch_router.get("/{repository_id:int}/branches", response_model=List[BranchRead])
 async def fetch_branches(repository_id: int, session: AsyncSession = Depends(get_session)):
@@ -32,3 +32,14 @@ async def fetch_tags(repository_id: int, session: AsyncSession = Depends(get_ses
     await _require_repository(session, repository_id)
     rows = await list_tags(session, repository_id)
     return [to_tag_read(tag) for tag in rows]
+
+@branch_router.get("/{repository_id:int}/stats", response_model=RepositoryStats)
+async def fetch_repository_stats(repository_id: int, branch: Optional[str] = Query(default=None, max_length=255), session: AsyncSession = Depends(get_session)):
+    try:
+        return await get_repository_stats(session, repository_id, branch)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (RuntimeError, TimeoutError) as e:
+        raise HTTPException(status_code=422, detail=str(e))

@@ -17,6 +17,7 @@ import {
   type CommitRead,
   type FileContent,
   type RepositoryRead,
+  type RepositoryStats,
 } from "./services/api";
 
 const AUTHOR_COLORS = ["#22c55e", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899"];
@@ -153,6 +154,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [repository, setRepository] = useState<RepositoryRead | null>(null);
   const [backendCommits, setBackendCommits] = useState<CommitRead[]>([]);
+  const [repoStats, setRepoStats] = useState<RepositoryStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MockCommit | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<FileChange[]>([]);
@@ -174,6 +176,12 @@ export default function App() {
         setRepository(repo);
         setBackendCommits(commits);
         setRepoUrl(repo.url);
+        try {
+          const stats = await api.getRepositoryStats(repo.id);
+          if (!cancelled) setRepoStats(stats);
+        } catch {
+          // Stats unavailable — cards/heatmap fall back to loaded commits.
+        }
       } catch {
         // Backend offline — UI falls back to the mock dataset below.
       }
@@ -226,6 +234,24 @@ export default function App() {
     };
   }, [selected, isLive, repository?.id, backendCommits]);
 
+  // Refetch full-history stats when the branch filter changes (scoped).
+  useEffect(() => {
+    if (!isLive || repository === null) return;
+    let cancelled = false;
+    const scope = branch === "all" ? undefined : branch;
+    api
+      .getRepositoryStats(repository.id, scope)
+      .then((stats) => {
+        if (!cancelled) setRepoStats(stats);
+      })
+      .catch(() => {
+        // Keep the previous scope's stats rather than blanking the cards.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [branch, isLive, repository]);
+
   const commits: MockCommit[] = useMemo(() => {
     if (!isLive) return MOCK_COMMITS;
     return backendCommits.map((c) => adaptCommit(c, defaultBranch));
@@ -247,12 +273,29 @@ export default function App() {
     [branch, commits],
   );
 
-  const heatmapDays: HeatmapDay[] = useMemo(
-    () => (isLive ? buildHeatmapFromCommits(backendCommits) : MOCK_HEATMAP),
-    [backendCommits, isLive],
-  );
+  const heatmapDays: HeatmapDay[] = useMemo(() => {
+    if (!isLive) return MOCK_HEATMAP;
+    // Full-history stats when available (covers not-yet-loaded pages);
+    // otherwise fall back to the loaded commits.
+    if (repoStats) {
+      return repoStats.days.map((d) => ({
+        date: d.date,
+        count: d.count,
+        authors: d.authors.map((email) => handleForAuthor("", email)),
+      }));
+    }
+    return buildHeatmapFromCommits(backendCommits);
+  }, [backendCommits, isLive, repoStats]);
 
   const stats = useMemo(() => {
+    if (isLive && repoStats) {
+      return [
+        { label: "Commits", value: repoStats.total, icon: GitCommitHorizontal },
+        { label: "Contributors", value: repoStats.contributors, icon: Users },
+        { label: "Merges", value: repoStats.merges, icon: GitFork },
+        { label: "Active days", value: repoStats.active_days, icon: Activity },
+      ];
+    }
     const authors = new Set(filteredCommits.map((c) => c.author.handle));
     const merges = filteredCommits.filter((c) => c.isMerge).length;
     return [
@@ -269,7 +312,7 @@ export default function App() {
         icon: Activity,
       },
     ];
-  }, [filteredCommits, heatmapDays]);
+  }, [filteredCommits, heatmapDays, isLive, repoStats]);
 
   /** Enriched selection: live backend file content fed into Monaco/playback. */
   const enrichedSelected: MockCommit | null = useMemo(() => {
@@ -292,6 +335,7 @@ export default function App() {
       ]);
       setRepository(details);
       setBackendCommits(commits);
+      setRepoStats(await api.getRepositoryStats(repo.id).catch(() => null));
       setSelected(null);
       setBranch("all");
     } catch (e) {
@@ -333,7 +377,8 @@ export default function App() {
             {" · "}
             {repository.status}
             {" · "}
-            {repository.commit_count} commits
+            {isLive && repoStats ? repoStats.total : repository.commit_count}{" "}
+            commits
             {!isLive &&
               " · showing cached mock data (backend has no commits yet)"}
           </p>

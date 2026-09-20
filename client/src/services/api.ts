@@ -9,7 +9,8 @@
  * - POST   /repositories/clone          { url } -> RepositoryRead
  * - POST   /repositories                { url, name, default_branch?, clone_path? } -> RepositoryRead
  * - GET    /repositories?limit&offset   -> RepositoryRead[]
- * - GET    /repositories/{repository_id:int} -> RepositoryRead
+ * - GET /repositories/{repository_id:int} -> RepositoryRead
+ * - GET /repositories/{repository_id:int}/stats?branch= -> RepositoryStats
  *
  * Commit history / list:
  * - GET /repositories/{id}/commits?limit&offset      -> CommitRead[]
@@ -111,6 +112,25 @@ export interface CloneRepoRequest {
   url: string;
 }
 
+/** Mirrors `server/src/schemas/branches.py::StatDay`. */
+export interface StatDay {
+  date: string;
+  count: number;
+  authors: string[];
+}
+
+/** Mirrors `server/src/schemas/branches.py::RepositoryStats`. */
+export interface RepositoryStats {
+  total: number;
+  merges: number;
+  contributors: number;
+  active_days: number;
+  first_day: string | null;
+  last_day: string | null;
+  scope: string;
+  days: StatDay[];
+}
+
 export interface StoreRepositoryRequest {
   url: string;
   name: string;
@@ -165,6 +185,15 @@ export const api = {
   /** GET /repositories/{repository_id} — single repo metadata. */
   getRepository: (repositoryId: number): Promise<RepositoryRead> =>
     request<RepositoryRead>(`/repositories/${repositoryId}`),
+
+  /** GET /repositories/{id}/stats — full-history aggregates (branch-aware). */
+  getRepositoryStats: (
+    repositoryId: number,
+    branch?: string,
+  ): Promise<RepositoryStats> =>
+    request<RepositoryStats>(
+      `/repositories/${repositoryId}/stats${query({ branch })}`,
+    ),
 
   // -- Commit history / list ----------------------------------------------
 
