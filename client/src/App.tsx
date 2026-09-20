@@ -481,13 +481,6 @@ export default function App() {
           />
         </div>
 
-        {selected === null && (
-          <p className="pb-6 text-center text-[11px] text-slate-600">
-            {isLive
-              ? `Live data from FastAPI (repo #${repository?.id}) — click any node to play back its code evolution line-by-line.`
-              : "Mock dataset rendered locally — run the FastAPI backend and hit “Visualize Repo” for live histories. Click any node to play back its code evolution line-by-line."}
-          </p>
-        )}
       </main>
 
       <DiffViewer

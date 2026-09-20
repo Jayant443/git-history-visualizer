@@ -1,4 +1,4 @@
-import { GitBranch, LoaderCircle, Search, Sparkles } from "lucide-react";
+import { GitBranch, LoaderCircle, Search } from "lucide-react";
 import { BRANCHES } from "../data/mockData";
 
 interface NavbarProps {
@@ -73,10 +73,8 @@ export function Navbar({
             disabled={isLoading}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-green-400 disabled:cursor-wait disabled:opacity-70"
           >
-            {isLoading ? (
+            {isLoading && (
               <LoaderCircle className="h-4 w-4 animate-spin" aria-label="Loading" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
             )}
             {isLoading ? "Visualizing…" : "Visualize Repo"}
           </button>
