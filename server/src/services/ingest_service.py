@@ -28,7 +28,7 @@ from src.services.repository_service import (
     store_repository,
 )
 
-INITIAL_COMMIT_PAGE_SIZE = 20
+INITIAL_COMMIT_PAGE_SIZE = 50
 MAX_BACKFILL_PER_REQUEST = 50
 
 def _needs_reingest(repository: Repository) -> bool:

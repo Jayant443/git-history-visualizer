@@ -355,16 +355,18 @@ export default function App() {
     }
   }
 
-  // Expand — fetch the next page (metadata + branches; file content loads
-  // on demand per commit) and append it at the end of the graph.
-  async function handleExpand() {
+  // Paged loading — fetch the next page (metadata + branches; file content
+  // loads on demand per commit) and append it at the end of the graph.
+  // Triggered by infinite scroll (or the fallback button); the guards make
+  // overlapping scroll events harmless.
+  async function handleRequestMore() {
     if (!isLive || repository === null || isExpanding || !canExpand) return;
     setIsExpanding(true);
     try {
       const page = await api.getNextCommits(
         repository.id,
         backendCommits.length,
-        20,
+        50,
         false,
       );
       setBackendCommits((prev) => {
@@ -382,7 +384,14 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#010409] text-slate-200 antialiased">
+    <div
+      className={
+        selected !== null
+          ? // Editor open: viewport-filling focus view (navbar + graph + editor).
+            "flex h-dvh flex-col overflow-hidden bg-[#010409] text-slate-200 antialiased"
+          : "min-h-screen bg-[#010409] text-slate-200 antialiased"
+      }
+    >
       <Navbar
         repoUrl={repoUrl}
         branch={branch}
@@ -393,17 +402,23 @@ export default function App() {
         onVisualize={() => void handleVisualize()}
       />
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6">
+      <main
+        className={
+          selected !== null
+            ? "mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col px-4 py-3 sm:px-6"
+            : "mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6"
+        }
+      >
         {error && (
           <p
             role="alert"
-            className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300"
+            className="shrink-0 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300"
           >
             Backend error: {error} — is FastAPI running on
             http://localhost:8000?
           </p>
         )}
-        {repository && (
+        {repository && selected === null && (
           <p className="truncate text-xs text-slate-500">
             <span className="font-semibold text-slate-300">
               {repository.name}
@@ -418,26 +433,36 @@ export default function App() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {stats.map((s) => (
-            <div
-              key={s.label}
-              className="rounded-xl border border-[#30363d] bg-[#161b22] px-4 py-3"
-            >
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <s.icon className="h-3.5 w-3.5 text-green-400" />
-                {s.label}
-              </div>
-              <p className="mt-1 text-2xl font-bold text-slate-50 tabular-nums">
-                {s.value}
-              </p>
+        {selected === null && (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {stats.map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-xl border border-[#30363d] bg-[#161b22] px-4 py-3"
+                >
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <s.icon className="h-3.5 w-3.5 text-green-400" />
+                    {s.label}
+                  </div>
+                  <p className="mt-1 text-2xl font-bold text-slate-50 tabular-nums">
+                    {s.value}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <CommitHeatmap days={heatmapDays} />
+            <CommitHeatmap days={heatmapDays} />
+          </>
+        )}
 
-        <div className="min-h-0">
+        <div
+          className={
+            selected !== null
+              ? "flex min-h-0 flex-1 flex-col"
+              : "flex max-h-[72dvh] min-h-[420px] min-w-0 flex-col"
+          }
+        >
           <CommitGraph
             commits={filteredCommits}
             selectedId={selected?.id ?? null}
@@ -449,18 +474,20 @@ export default function App() {
                     isExpanding,
                     loaded: backendCommits.length,
                     total: repoStats.total,
-                    onExpand: () => void handleExpand(),
+                    onRequestMore: () => void handleRequestMore(),
                   }
                 : undefined
             }
           />
         </div>
 
-        <p className="pb-6 text-center text-[11px] text-slate-600">
-          {isLive
-            ? `Live data from FastAPI (repo #${repository?.id}) — click any node to play back its code evolution line-by-line.`
-            : "Mock dataset rendered locally — run the FastAPI backend and hit “Visualize Repo” for live histories. Click any node to play back its code evolution line-by-line."}
-        </p>
+        {selected === null && (
+          <p className="pb-6 text-center text-[11px] text-slate-600">
+            {isLive
+              ? `Live data from FastAPI (repo #${repository?.id}) — click any node to play back its code evolution line-by-line.`
+              : "Mock dataset rendered locally — run the FastAPI backend and hit “Visualize Repo” for live histories. Click any node to play back its code evolution line-by-line."}
+          </p>
+        )}
       </main>
 
       <DiffViewer

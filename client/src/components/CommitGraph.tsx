@@ -18,7 +18,8 @@ interface ExpandProps {
   isExpanding: boolean;
   loaded: number;
   total: number;
-  onExpand: () => void;
+  /** Fetch the next page (triggered by scroll; also wired to fallback button). */
+  onRequestMore: () => void;
 }
 
 interface CommitGraphProps {
@@ -31,6 +32,10 @@ interface CommitGraphProps {
 const ROW_H = 76;
 const LANE_W = 120;
 const NODE_R = 9;
+
+// Distance from the bottom of the scroll container that triggers loading
+// the next page (~5 rows).
+const NEAR_END_PX = 400;
 
 function laneOf(branch: string, lanes: string[]): number {
   const index = lanes.indexOf(branch);
@@ -152,6 +157,37 @@ export function CommitGraph({ commits, selectedId, onSelect, expand }: CommitGra
     }
   }, [commits]);
 
+  // Latest expand state for the scroll listener (avoids resubscribing).
+  const expandRef = useRef<ExpandProps | null>(null);
+  useEffect(() => {
+    expandRef.current = expand ?? null;
+  });
+
+  function maybeRequestMore(el: HTMLDivElement): void {
+    const state = expandRef.current;
+    if (!state || !state.canExpand || state.isExpanding) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_END_PX) {
+      state.onRequestMore();
+    }
+  }
+
+  // Infinite scroll: load the next page when the user nears the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => maybeRequestMore(el);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Initial fill: short histories never become scrollable, so top them up
+  // until the container overflows or the history is exhausted. Terminates
+  // via the canExpand/isExpanding gates above.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) maybeRequestMore(el);
+  }, [commits]);
+
   function updateHoverPos(e: React.MouseEvent) {
     const rect = sectionRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -190,7 +226,7 @@ export function CommitGraph({ commits, selectedId, onSelect, expand }: CommitGra
   return (
     <section
       ref={sectionRef}
-      className="relative flex min-h-0 flex-col rounded-xl border border-[#30363d] bg-[#161b22]"
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#30363d] bg-[#161b22]"
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-[#30363d] px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-100">Commit graph</h2>
@@ -244,7 +280,7 @@ export function CommitGraph({ commits, selectedId, onSelect, expand }: CommitGra
         </span>
       </div>
 
-      <div ref={scrollRef} className="graph-scroll min-h-[320px] flex-1 overflow-auto">
+      <div ref={scrollRef} className="graph-scroll min-h-[160px] flex-1 overflow-auto">
         <div
           style={{
             width: width * zoom + 320,
@@ -365,27 +401,30 @@ export function CommitGraph({ commits, selectedId, onSelect, expand }: CommitGra
         </div>
       </div>
 
-      {/* Expand — loads the next page of commits, appended at the end */}
-      {expand && (expand.canExpand || expand.isExpanding) && (
-        <div className="flex justify-center border-t border-[#30363d]/80 px-4 py-2">
-          <button
-            type="button"
-            onClick={expand.onExpand}
-            disabled={!expand.canExpand || expand.isExpanding}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#30363d] px-3 py-1 text-[11px] text-slate-500 transition hover:border-green-500/40 hover:text-green-300 disabled:cursor-wait disabled:opacity-70"
-          >
-            {expand.isExpanding ? (
-              <LoaderCircle
-                className="h-3.5 w-3.5 animate-spin"
-                aria-label="Loading more commits"
-              />
-            ) : (
-              <ChevronsDown className="h-3.5 w-3.5" />
-            )}
-            {expand.isExpanding
-              ? "Loading…"
-              : `Show more (${expand.loaded} of ${expand.total})`}
-          </button>
+      {/* Load status — counts always visible; spinner while fetching;
+          manual fallback button while more commits remain. */}
+      {expand && (
+        <div className="flex items-center justify-center gap-2 border-t border-[#30363d]/80 px-4 py-2 text-[11px] text-slate-500">
+          <span className="tabular-nums">
+            {expand.loaded} of {expand.total} commits
+          </span>
+          {expand.isExpanding ? (
+            <LoaderCircle
+              className="h-3.5 w-3.5 animate-spin"
+              aria-label="Loading more commits"
+            />
+          ) : (
+            expand.canExpand && (
+              <button
+                type="button"
+                onClick={expand.onRequestMore}
+                className="inline-flex items-center gap-1 rounded-full border border-[#30363d] px-2.5 py-0.5 text-[11px] text-slate-500 transition hover:border-green-500/40 hover:text-green-300"
+              >
+                <ChevronsDown className="h-3 w-3" />
+                Show more
+              </button>
+            )
+          )}
         </div>
       )}
 
