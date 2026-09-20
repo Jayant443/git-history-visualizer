@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { DiffEditor } from "@monaco-editor/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Braces,
@@ -208,6 +208,18 @@ function splitName(path: string): { dir: string; name: string } {
   return { dir: parts.slice(0, -1).join("/"), name: parts[parts.length - 1] };
 }
 
+/** Char offset in `text` -> 1-based Monaco position, clamped into range. */
+function offsetToPosition(text: string, index: number): { lineNumber: number; column: number } {
+  const clamped = Math.max(0, Math.min(index, text.length));
+  const before = text.slice(0, clamped);
+  const lineNumber = before.split("\n").length;
+  const column = clamped - (before.lastIndexOf("\n") + 1) + 1;
+  return { lineNumber, column };
+}
+
+type MonacoApi = Parameters<DiffOnMount>[1];
+type ModifiedEditor = ReturnType<Parameters<DiffOnMount>[0]["getModifiedEditor"]>;
+
 export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffViewerProps) {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -215,6 +227,9 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
   const [stepIdx, setStepIdx] = useState(0);
   const [buffer, setBuffer] = useState("");
   const [prevKey, setPrevKey] = useState<string | null>(null);
+  const modifiedRef = useRef<ModifiedEditor | null>(null);
+  const monacoRef = useRef<MonacoApi | null>(null);
+  const decorIdsRef = useRef<string[]>([]);
 
   // Remounted per commit via `key` in App, so initial state is the reset path.
   const activeFile =
@@ -263,12 +278,52 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
     return () => window.clearInterval(id);
   }, [isPlaying, done, speed, stepIdx, steps, total]);
 
+  const handleDiffMount: DiffOnMount = (editor, monaco) => {
+    modifiedRef.current = editor.getModifiedEditor();
+    monacoRef.current = monaco;
+    decorIdsRef.current = [];
+  };
+
+  function clearLiveCursor() {
+    if (modifiedRef.current) {
+      decorIdsRef.current = modifiedRef.current.deltaDecorations(
+        decorIdsRef.current,
+        [],
+      );
+    }
+  }
+
+  // Simulated live cursor: highlight the character the next step edits and
+  // keep it in view, so playback feels like someone typing/backspacing.
+  useEffect(() => {
+    const modified = modifiedRef.current;
+    const monaco = monacoRef.current;
+    const upcoming: CharStep | null = done ? null : (steps[stepIdx] ?? null);
+    if (!modified || !monaco || !upcoming || buffer.length === 0) {
+      clearLiveCursor();
+      return;
+    }
+    const { lineNumber, column } = offsetToPosition(buffer, upcoming.index);
+    // Zero-width range: the caret is injected content at the exact edit
+    // point (no character highlight).
+    const range = new monaco.Range(lineNumber, column, lineNumber, column);
+    decorIdsRef.current = modified.deltaDecorations(decorIdsRef.current, [
+      {
+        range,
+        options: { beforeContentClassName: "live-cursor" },
+      },
+    ]);
+    const visible = modified.getVisibleRanges();
+    const inView = visible.some((r) => r.containsPosition(range.getStartPosition()));
+    if (!inView) modified.revealLineInCenter(lineNumber);
+    return clearLiveCursor;
+  }, [buffer, done, stepIdx, steps]);
+
   function handleReset() {
     setBuffer(original);
     setStepIdx(0);
     setIsPlaying(true);
   }
-
   function handleSkipToEnd() {
     setBuffer(modified);
     setStepIdx(total);
@@ -292,7 +347,7 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 480, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 34 }}
-          className="fixed top-0 right-0 z-40 flex h-dvh w-full max-w-4xl flex-col overflow-hidden border-l border-[#30363d] bg-[#0d1117] shadow-2xl shadow-black/70"
+          className="fixed top-36 right-0 z-40 flex h-[calc(100dvh-9rem)] w-full max-w-4xl flex-col overflow-hidden border-l border-[#30363d] bg-[#0d1117] shadow-2xl shadow-black/70 lg:top-16 lg:h-[calc(100dvh-4rem)]"
           role="dialog"
           aria-label={`Diff for ${commit.short}`}
         >
@@ -402,8 +457,8 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
                   ? "no changes"
                   : "· done"
                 : phase === "deleting"
-                  ? "backspacing…"
-                  : "typing…"}
+                  ? "deleting…"
+                  : "adding…"}
             </span>
 
             <span className="ml-auto font-mono text-[11px] text-slate-400 tabular-nums">
@@ -488,6 +543,7 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
                     theme="vs-dark"
                     original={original}
                     modified={animatedModified}
+                    onMount={handleDiffMount}
                     options={{
                       readOnly: true,
                       renderSideBySide: false,

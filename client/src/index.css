@@ -61,3 +61,27 @@ body {
 select option {
   background-color: #161b22;
 }
+
+/* Simulated live-editing caret inside the Monaco diff view. Rendered as
+   injected content at the position the next step edits; blinks like a
+   text cursor. */
+.live-cursor::before {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-right: -2px;
+  background: #fff;
+  vertical-align: -0.2em;
+  animation: live-cursor-blink 0.9s step-end infinite;
+}
+
+@keyframes live-cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
