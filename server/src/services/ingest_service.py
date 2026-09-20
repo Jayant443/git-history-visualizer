@@ -1,10 +1,11 @@
 import asyncio
-import shutil
+import logging
 from pathlib import Path
 from sqlmodel.ext.asyncio.session import AsyncSession
+from src.core.config import config
 from src.git.commits import parse_git_commits
 from src.git.refs import list_branches, list_tags
-from src.git.repository import GitRepository
+from src.git.repository import GitRepository, safe_rmtree_clone
 from src.models.enums import RepoStatus
 from src.models.repository import Repository
 from src.services.branch_service import persist_branches, persist_tags
@@ -30,7 +31,11 @@ async def ingest_repository(session: AsyncSession, url: str) -> Repository:
     if existing is not None and not _needs_reingest(existing):
         return existing
     if existing is not None and existing.clone_path:
-        await asyncio.to_thread(shutil.rmtree, existing.clone_path, True)
+        root = Path(config.REPOSITORY_ROOT).resolve()
+        try:
+            await asyncio.to_thread(safe_rmtree_clone, root, existing.clone_path)
+        except ValueError as exc:
+            logging.warning("Skipping clone cleanup outside repository root: %s", exc)
 
     cloned = await asyncio.to_thread(GitRepository.clone, normalized_url)
     branch = await asyncio.to_thread(cloned.get_default_branch)

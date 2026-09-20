@@ -1,4 +1,5 @@
 from typing import List
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
@@ -36,18 +37,25 @@ async def clone_repository(request: CloneRepoRequest, session: AsyncSession = De
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (RuntimeError, TimeoutError) as e:
-        raise HTTPException(status_code=422, detail=f"Ingest failed: {e}")
+        logging.warning("Repository ingest failed: %s", e)
+        raise HTTPException(status_code=422, detail="Ingest failed: unable to clone or analyze the repository")
+    except Exception as e:
+        logging.exception("Unexpected ingest failure: %s", e)
+        raise HTTPException(status_code=500, detail="Ingest failed due to an internal error")
     return _to_read(repo)
 
 @repo_router.post("", response_model=RepositoryRead, status_code=201, name="store-repository")
 async def store_repository_details(request: StoreRepositoryRequest, session: AsyncSession = Depends(get_session),):
-    repo = await store_repository(
-        session,
-        url=request.url,
-        name=request.name,
-        default_branch=request.default_branch,
-        clone_path=request.clone_path,
-    )
+    try:
+        repo = await store_repository(
+            session,
+            url=request.url,
+            name=request.name,
+            default_branch=request.default_branch,
+            clone_path=request.clone_path,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return _to_read(repo)
 
 @repo_router.get("", response_model=List[RepositoryRead], name="list-repositories")
