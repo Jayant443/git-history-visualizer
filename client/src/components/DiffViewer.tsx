@@ -16,7 +16,7 @@ import {
   SkipForward,
   X,
 } from "lucide-react";
-import type { MockCommit } from "../data/mockData";
+import type { MockCommit } from "../types";
 import { cn } from "../lib/cn";
 
 interface DiffViewerProps {

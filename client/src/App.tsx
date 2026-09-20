@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, GitCommitHorizontal, GitFork, Users } from "lucide-react";
+import {
+  Activity,
+  GitBranch,
+  GitCommitHorizontal,
+  GitFork,
+  LoaderCircle,
+  Search,
+  Users,
+} from "lucide-react";
 import { Navbar } from "./components/Navbar";
 import { CommitHeatmap } from "./components/CommitHeatmap";
 import { CommitGraph } from "./components/CommitGraph";
 import { DiffViewer } from "./components/DiffViewer";
-import {
-  MOCK_COMMITS,
-  MOCK_HEATMAP,
-  type FileChange,
-  type HeatmapDay,
-  type MockCommit,
-} from "./data/mockData";
+import type { FileChange, HeatmapDay, MockCommit } from "./types";
 import {
   api,
   type CommitDiff,
@@ -149,7 +151,7 @@ function buildHeatmapFromCommits(commits: CommitRead[]): HeatmapDay[] {
 }
 
 export default function App() {
-  const [repoUrl, setRepoUrl] = useState("https://github.com/acme/visualizer");
+  const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("all");
   const [isLoading, setIsLoading] = useState(false);
   const [repository, setRepository] = useState<RepositoryRead | null>(null);
@@ -168,42 +170,13 @@ export default function App() {
   const canExpand =
     isLive && repoStats !== null && backendCommits.length < repoStats.total;
 
-  // Initial load: pick up the most recent known repository + its commits.
-  useEffect(() => {
-    let cancelled = false;
-    async function bootstrap() {
-      try {
-        const repos = await api.listRepositories(1, 0);
-        if (cancelled || repos.length === 0) return;
-        const repo = repos[0];
-        const commits = await api.getAllCommits(repo.id);
-        if (cancelled) return;
-        setRepository(repo);
-        setBackendCommits(commits);
-        setRepoUrl(repo.url);
-        try {
-          const stats = await api.getRepositoryStats(repo.id);
-          if (!cancelled) setRepoStats(stats);
-        } catch {
-          // Stats unavailable — cards/heatmap fall back to loaded commits.
-        }
-      } catch {
-        // Backend offline — UI falls back to the mock dataset below.
-      }
-    }
-    void bootstrap();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Fetch live file content for the selected commit (Monaco / playback).
   useEffect(() => {
     if (!selected) {
       setSelectedFiles([]);
       return;
     }
-    // Mock-fallback commits already carry files; nothing to fetch.
+    // Loaded commits carry no file content; fetch it per selection.
     if (!isLive || selected.files.length > 0) {
       setSelectedFiles(selected.files);
       return;
@@ -258,7 +231,7 @@ export default function App() {
   }, [branch, isLive, repository]);
 
   const commits: MockCommit[] = useMemo(() => {
-    if (!isLive) return MOCK_COMMITS;
+    if (!isLive) return [];
     return backendCommits.map((c) => adaptCommit(c, defaultBranch));
   }, [backendCommits, defaultBranch, isLive]);
 
@@ -279,7 +252,6 @@ export default function App() {
   );
 
   const heatmapDays: HeatmapDay[] = useMemo(() => {
-    if (!isLive) return MOCK_HEATMAP;
     // Full-history stats when available (covers not-yet-loaded pages);
     // otherwise fall back to the loaded commits.
     if (repoStats) {
@@ -289,6 +261,7 @@ export default function App() {
         authors: d.authors.map((email) => handleForAuthor("", email)),
       }));
     }
+    if (!isLive) return [];
     return buildHeatmapFromCommits(backendCommits);
   }, [backendCommits, isLive, repoStats]);
 
@@ -383,6 +356,63 @@ export default function App() {
     }
   }
 
+  // Landing: no repo loaded yet (fresh reload shows this, never mock data
+  // or a previously visualized repository).
+  if (repository === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#010409] px-4 text-slate-200 antialiased">
+        <div className="w-full max-w-xl rounded-2xl border border-[#30363d] bg-[#0d1117] p-6 shadow-2xl shadow-black/60 sm:p-8">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-500/15 text-green-400 ring-1 ring-green-500/30">
+              <GitBranch className="h-5 w-5" />
+            </span>
+            <div className="leading-tight">
+              <p className="text-sm font-bold tracking-tight text-slate-100">
+                CommitScope
+              </p>
+              <p className="text-xs text-slate-500">Git Commit Visualizer</p>
+            </div>
+          </div>
+
+          <label className="relative mt-6 block">
+            <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleVisualize();
+              }}
+              placeholder="https://github.com/owner/repo"
+              spellCheck={false}
+              className="w-full rounded-full border border-[#30363d] bg-[#161b22] py-2 pr-4 pl-10 text-sm text-slate-200 placeholder:text-slate-600 focus:border-green-500/60 focus:ring-2 focus:ring-green-500/20 focus:outline-none"
+            />
+          </label>
+
+          {error && (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-300"
+            >
+              {error}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleVisualize()}
+            disabled={isLoading}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-green-400 disabled:cursor-wait disabled:opacity-70"
+          >
+            {isLoading && (
+              <LoaderCircle className="h-4 w-4 animate-spin" aria-label="Loading" />
+            )}
+            {isLoading ? "Visualizing…" : "Visualize Repo"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
@@ -428,8 +458,6 @@ export default function App() {
             {" · "}
             {isLive && repoStats ? repoStats.total : repository.commit_count}{" "}
             commits
-            {!isLive &&
-              " · showing cached mock data (backend has no commits yet)"}
           </p>
         )}
 

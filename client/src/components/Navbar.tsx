@@ -1,10 +1,9 @@
 import { GitBranch, LoaderCircle, Search } from "lucide-react";
-import { BRANCHES } from "../data/mockData";
 
 interface NavbarProps {
   repoUrl: string;
   branch: string;
-  branches?: string[];
+  branches: string[];
   isLoading: boolean;
   onRepoUrlChange: (v: string) => void;
   onBranchChange: (v: string) => void;
@@ -14,7 +13,7 @@ interface NavbarProps {
 export function Navbar({
   repoUrl,
   branch,
-  branches = [...BRANCHES],
+  branches,
   isLoading,
   onRepoUrlChange,
   onBranchChange,

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Flame } from "lucide-react";
-import type { HeatmapDay } from "../data/mockData";
+import type { HeatmapDay } from "../types";
 
 interface CommitHeatmapProps {
   days: HeatmapDay[];

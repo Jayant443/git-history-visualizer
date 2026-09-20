@@ -8,7 +8,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { BRANCH_COLORS, type MockCommit } from "../data/mockData";
+import { BRANCH_COLORS, type MockCommit } from "../types";
 import { cn } from "../lib/cn";
 
 interface ExpandProps {
