@@ -25,7 +25,7 @@
  * - GET /repositories/{id}/blobs/{blob_sha}    -> BlobContent
  */
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 export type RepoStatus = "pending" | "cloning" | "ready" | "error";
 
