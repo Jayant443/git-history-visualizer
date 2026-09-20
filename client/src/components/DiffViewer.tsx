@@ -22,6 +22,8 @@ import { cn } from "../lib/cn";
 interface DiffViewerProps {
   commit: MockCommit | null;
   onClose: () => void;
+  /** Advance to the next commit (graph order); null when this is the last. */
+  onNextCommit?: (() => void) | null;
   /** True while live file content is being fetched from the backend. */
   isLoadingFiles?: boolean;
 }
@@ -220,7 +222,7 @@ function offsetToPosition(text: string, index: number): { lineNumber: number; co
 type MonacoApi = Parameters<DiffOnMount>[1];
 type ModifiedEditor = ReturnType<Parameters<DiffOnMount>[0]["getModifiedEditor"]>;
 
-export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffViewerProps) {
+export function DiffViewer({ commit, onClose, onNextCommit = null, isLoadingFiles = false }: DiffViewerProps) {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -325,10 +327,50 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
     setIsPlaying(true);
   }
   function handleSkipToEnd() {
+    // Skip means "done with this file": move to the next file when there is
+    // one (it replays from the top via the `fileKey` reset), otherwise move
+    // to the next commit; only the very last file snaps to its final state.
+    const paths = commit?.files.map((f) => f.path) ?? [];
+    if (paths.length === 0) {
+      // Nothing to show here — but never skip a commit whose files are
+      // still loading from the backend.
+      if (!isLoadingFiles) onNextCommit?.();
+      return;
+    }
+    const idx = paths.indexOf(activePath ?? paths[0] ?? "");
+    const next = idx >= 0 ? paths[idx + 1] : undefined;
+    if (next) {
+      setActivePath(next);
+      return;
+    }
+    if (onNextCommit) {
+      onNextCommit();
+      return;
+    }
     setBuffer(modified);
     setStepIdx(total);
     setIsPlaying(false);
   }
+
+  const filePaths = commit?.files.map((f) => f.path) ?? [];
+  const activeIdx = filePaths.indexOf(activePath ?? filePaths[0] ?? "");
+  const isLastFile =
+    filePaths.length === 0 || activeIdx === filePaths.length - 1;
+
+  // Auto-advance: once a file finishes replaying, move to the next file so
+  // the whole commit plays through, then on to the next commit. Zero-change
+  // files count as finished so playback glides past them instead of getting
+  // stuck. Held while paused or while files are still loading.
+  useEffect(() => {
+    if (!done || !isPlaying || !commit || isLoadingFiles) return;
+    const paths = commit.files.map((f) => f.path);
+    const idx = paths.indexOf(activePath ?? paths[0] ?? "");
+    const nextFile = idx >= 0 ? paths[idx + 1] : undefined;
+    const advance = nextFile ? () => setActivePath(nextFile) : (onNextCommit ?? undefined);
+    if (!advance) return;
+    const id = window.setTimeout(advance, 0);
+    return () => window.clearTimeout(id);
+  }, [done, isPlaying, commit, activePath, isLoadingFiles, onNextCommit]);
 
   // Live buffer drives the unified editor view. Snapping to `modified` at
   // completion keeps the end exact.
@@ -405,11 +447,11 @@ export function DiffViewer({ commit, onClose, isLoadingFiles = false }: DiffView
               onClick={handleSkipToEnd}
               disabled={done}
               className="inline-flex items-center gap-1.5 rounded-md border border-[#30363d] px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-green-500/50 hover:text-green-300 disabled:cursor-default disabled:opacity-40"
-              aria-label="Skip to end"
-              title="Skip to final state"
+              aria-label={isLastFile && onNextCommit ? "Next commit" : "Skip to end"}
+              title={isLastFile && onNextCommit ? "Skip to next commit" : "Skip to final state"}
             >
               <SkipForward className="h-3.5 w-3.5" />
-              Skip
+              {isLastFile && onNextCommit ? "Next" : "Skip"}
             </button>
 
             <div

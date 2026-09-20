@@ -341,7 +341,10 @@ export default function App() {
       setRepository(details);
       setBackendCommits(commits);
       setRepoStats(await api.getRepositoryStats(repo.id).catch(() => null));
-      setSelected(null);
+      // Auto-open the first (oldest) commit so the editor starts playing.
+      const firstBranch = details.default_branch ?? "main";
+      const adapted = commits.map((c) => adaptCommit(c, firstBranch));
+      setSelected(adapted[0] ?? null);
       setBranch("all");
     } catch (e) {
       setError(
@@ -465,6 +468,13 @@ export default function App() {
         commit={enrichedSelected}
         isLoadingFiles={filesLoading}
         onClose={() => setSelected(null)}
+        onNextCommit={(() => {
+          if (!selected) return null;
+          const idx = filteredCommits.findIndex((c) => c.id === selected.id);
+          if (idx < 0 || idx >= filteredCommits.length - 1) return null;
+          const next = filteredCommits[idx + 1];
+          return () => setSelected(next);
+        })()}
       />
     </div>
   );
